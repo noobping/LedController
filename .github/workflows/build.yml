@@ -11,7 +11,7 @@ jobs:
     permissions:
       deployments: write
       packages: write
-      content: write
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
