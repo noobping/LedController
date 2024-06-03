@@ -38,6 +38,6 @@ jobs:
           platforms: linux/arm64,linux/amd64
           push: true
           tags: |
-            ghcr.io/greenjoepie/orangepiledmatrix:latest
+            ghcr.io/lucrasoft/ledcontroller:latest
           secrets: |
             GITHUB_TOKEN
