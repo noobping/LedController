@@ -1,117 +1,232 @@
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Annotated
-from collections import deque
 from typing import Tuple
+from threading import Thread
 import socket
 import uvicorn
 import copy
 import requests
-import random	
+import random    
+import time
+import numpy as np
+import cv2 as cv
+import os
+import glob
 
 
-app = FastAPI()
+description = """<br>
+This API is used to send UDP commands to WLED controllers to control their LEDs like they're a 2D matrix.<br>
+The API requires the user to send a full (for now) virtual state of the matrix' colors in hex strings to one of the API's endpoints, which the server will then use to update the real LED matrix.<br><br>
+The API has two endpoints from which it can be accessed:
+* **HTTP Post requests** at http://{server_ip}/update, requires the virtual state in JSON as input.
+* **Websocket**: at ws://{server_ip}/ws, requires the virtual state in a byte array with the text "update; " in front.
+
+Besides the update function, which updates the entire matrix, there is also a setAllColors function, which goes mostly unused.
+<br><br>"""
+
+app = FastAPI(
+    title="LedControllerAPI",
+    summary="API server for controlling WLED lights like a matrix.",
+    description=description,
+    version="0.4.0",
+    contact={
+        "name": "Lucrasoft",
+        "url": "https://www.lucrasoft.nl/",
+        "email": "info@lucrasoft.nl"
+    }
+)
 
 LEDS_PER_WINDOW: int = 20
 WINDOWS_PER_WLED: int = 5
 LEDS_PER_WLED: int = LEDS_PER_WINDOW * WINDOWS_PER_WLED
-WLEDS_GRID: Tuple[int, int] = (2, 2)
-WINDOWS_GRID: Tuple[int, int] = (WLEDS_GRID[0] * WINDOWS_PER_WLED, WLEDS_GRID[1])
 WLED_IPS: Tuple[str, ...] = \
-	("192.168.107.123", "192.168.107.122", "192.168.107.120", "192.168.107.121")
+    ("192.168.107.123", "192.168.107.122", "192.168.107.120", "192.168.107.121")
+LEDS_IN_MATRIX: int = LEDS_PER_WLED * len(WLED_IPS)
+MATRIX_SHAPE: Tuple[int, int] = (2, 2)
 UDP_PORT: int = 21324
+VIDEO_PATH = os.path.join(os.path.dirname(__file__), 'videos')
 
-# Random color functions
-r = lambda: random.randint(64, 255)
-rh = lambda: '%02X%02X%02X' % (r(),r(),r())
+"""
+Changing this variable causes the state that is sent to the LED matrix
+to be reversed. This is so that the matrix is aligned properly when
+looking from the front of the LED matrix, as opposed to viewing it from
+inside.
+"""
+REVERSE_VIEW = True;
 
-""" Used to subtract hexadecimal color values from eachother. """
-def subtractColors(hex1: str, hex2: str) -> str:
-	resulthex = ""
-	for i in range(0,6,2):
-		resulthex += f"{(max(int(hex1[i:i+2], 16) - int(hex2[i:i+2], 16), 0)):02x}"
-	return resulthex
-
-def responseTimeMsString(response):
-	return str((response.elapsed.microseconds + response.elapsed.seconds * 1000000) // 1000) + "ms"
-	
+stopVideo = False
 
 
-@app.get("/setall/{color}")
+""" This code is used to repeatedly send the current state in the background """
+currentState = ["000000"] * LEDS_IN_MATRIX
+
+@app.on_event("startup")
+def startup_event():
+    Thread(target=send_state, daemon=True).start()
+
+def send_state():
+    while True:
+        actualState = reverse_state()
+        for i in range(len(WLED_IPS)):
+            subMatrix = actualState[i*LEDS_PER_WLED:(i+1)*LEDS_PER_WLED]
+            byteString = f"02 02 {' '.join(subMatrix)}"
+            udpPacket = bytes.fromhex(byteString)
+            ip = WLED_IPS[i]
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.sendto(udpPacket, (ip, UDP_PORT))
+        time.sleep(0.05)
+        
+
+"""
+This function reverses the currentState variable when REVERSE_VIEW is
+true, and returns it. When REVERSE_VIEW is false, it will return
+currentState without modifying it.
+"""
+def reverse_state():
+    global currentState
+    if not REVERSE_VIEW:
+        return currentState
+        
+    tempState = []
+    rows = MATRIX_SHAPE[1]
+    ledsInRow = LEDS_IN_MATRIX // rows
+    for row in range(rows):
+        tempState.extend(currentState[row * ledsInRow : (row+1) * ledsInRow][::-1])
+    return tempState
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+
+
+            data = data.split(b"; ")
+            match data[0]:
+                case b"setall":
+                    setAllColors(data[1])
+                case b"update":
+                    matrix = ColorMatrix(State=data[1].split(b", "))
+                    update_matrix(matrix)
+                case b"difference":
+                    differences = [str(diff.strip(b"()"), encoding='utf-8') for diff in data[1].split(b", ")]
+                    differences = [differences[i:i+2] for i in range(0, len(differences), 2)]
+                    update_differences(differences)
+                case b"videolist":
+                    await websocket.send_text(("videos: ", ", ".join(get_video_list())))
+                case b"video":
+                    start_video(data[1].decode())
+                case b"stop":
+                    print("stopping")
+                    global stopVideo
+                    stopVideo = True
+                case b"brightness":
+                    set_brightness(int(data[1]))
+                case _:
+                    print("Unknown websocket command: " + data[0].decode())
+            
+            await websocket.send_text("OK.")
+
+    except WebSocketDisconnect:
+        pass
+
+
+
 def setAllColors(color: str):
-	"""This function sets all windows to the same color."""
-	if len(color) != 6:
-		raise HTTPException(status_code=400, detail=f"Invalid string length")
-	try:
-		byteString = f"02 02 {(color + ' ') * LEDS_PER_WLED}".strip()
-		udpPacket = bytes.fromhex(byteString)
-	except ValueError:
-		raise HTTPException(status_code=400, detail=f"Invalid hex character in string")
+    """This function sets all windows to the same color."""
+    if len(color) != 6:
+        raise HTTPException(status_code=400, detail=f"Invalid string length")
+    try:
+        byteString = f"02 02 {(color + ' ') * LEDS_PER_WLED}".strip()
+        udpPacket = bytes.fromhex(byteString)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid hex character in string")
 
-	print(udpPacket)
-	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	for ip in WLED_IPS:
-		sock.sendto(udpPacket, (ip, UDP_PORT))
-	
-	return byteString
-	
-# @app.get("/spin")
-# def rainbow_spin():
-	# """ (incomplete) This function is a test that makes a light "spin" all around the light matrix while leaving a small trail """
-	# preset2Json = {
-		# "ps": 2
-	# }
-	# #response = requests.post("http://192.168.107.120/json", json=preset2Json)
-	
-	# ledColors = deque(["000000"]*6)
-	# ledStrip = ["000000"] * 200
-	# for i in range(41, 100):
-		# ledColors = deque([subtractColors(x, '333333') for x in ledColors])
-		# ledColors.rotate(-1)
-		# ledColors[-1] = rh()
-		# ledStrip[i-5:i+1] = ledColors
-		# LEDJson = {
-			# "seg": {
-				# "id": 0,
-				# "on": True,
-				# "i": ledStrip
-			# }
-		# }
-		# response1 = requests.post("http://192.168.107.120/json", json=LEDJson)
-		
-		
-	# preset1Json = {
-		# "ps": 1
-	# }
-	# #response = requests.post("http://192.168.107.120/json", json=preset1Json)
-	# raise HTTPException(status_code=418)
-	
+    global currentState
+    currentState = [color] * LEDS_IN_MATRIX
+    
+    # print(udpPacket)
+    # sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # for ip in WLED_IPS:
+        # sock.sendto(udpPacket, (ip, UDP_PORT))
+    
+    return byteString
+    
+    
 class ColorMatrix(BaseModel):
-	""" A list of 20 (10x2) color values in hex to represent the light matrix """
-	State: List[str]
-	
-@app.post("/update")
+    """ A list of 20 (10x2) color values in hex to represent the light matrix """
+    State: List[str]
+    
 def update_matrix(colorMatrix: ColorMatrix):
-	""" This function sets the light matrix to the colors specified in the given ColorMatrix array """
-	matrix = colorMatrix.State
-	print([(color, matrix.index(color)) for color in matrix if color != '000000'])
-	for i in range(len(WLED_IPS)):
-		subMatrix = matrix[i*LEDS_PER_WLED:i*LEDS_PER_WLED+LEDS_PER_WLED]
-		byteString = f"02 02 {' '.join(subMatrix)}"
-		udpPacket = bytes.fromhex(byteString)
-		ip = WLED_IPS[i]
-		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		sock.sendto(udpPacket, (ip, UDP_PORT))
-		
-		
-		
+    """ This function sets the light matrix to the colors specified in the State array from the given ColorMatrix object. """
+    global currentState
+    if len(colorMatrix.State) == LEDS_IN_MATRIX:
+        currentState = colorMatrix.State
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid matrix length")
 
-# @app.get("/reset")
-# def reset_matrix():
-	# """ This function "resets" the matrix by setting the WLED preset """
-	# wLedJson = {
-		# "ps": 1 
-		# }
-	# response = requests.post("http://192.168.107.120/json", json=wLedJson)
-	# print(response.json())
-	# raise HTTPException(status_code=418)
+def update_differences(differences: List[List[str]]):
+    for difference in differences:
+        currentState[int(difference[0])] = difference[1]
+
+
+
+def start_video(videoName: str):
+    Thread(target=video_playback, args=(videoName,)).start()
+
+def video_playback(videoName: str):
+    global currentState
+    global stopVideo
+    stopVideo = False
+    startTime = time.time()
+    frameCount = 0
+    try:
+        videofile = glob.glob(os.path.join(VIDEO_PATH, videoName + ".*"))[0]
+    except IndexError:
+        print("File not found: " + videoName)
+        return
+    cap = cv.VideoCapture(videofile)
+    while True:
+        if stopVideo:
+            setAllColors("000000")
+            print("stopped")
+            break
+            
+        ret, frame = cap.read()
+        if not ret:
+            setAllColors("000000")
+            print("done")
+            break
+        
+        frameState = [''.join([f"{rgb:02x}" for rgb in pixel]) for pixel in frame.reshape(-1, frame.shape[-1])]
+        frameCount += 1
+        # print(frameState)
+        currentState = frameState
+        # print((frameCount / (time.time() - startTime) // 1) // 1)
+        time.sleep(0.05)
+
+
+@app.get("/videolist")
+def get_video_list():
+    # print(VIDEO_PATH)
+    videoList = [video.split("/")[-1] for video in glob.glob(os.path.join(VIDEO_PATH, "*.mp4"))]
+    return videoList
+    
+
+def set_brightness(value: int):
+    json = {
+        "on": True,
+        "bri": value,
+        "seg": [{
+            "col": [0,0,0]
+            }]
+    }
+    for ip in WLED_IPS:
+        try:
+            response = requests.post(f"http://{ip}/json", json=json)
+        except:
+            continue
+        
