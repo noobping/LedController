@@ -81,17 +81,16 @@ def send_state():
                 idleCounter += 1
         else:
             idleCounter = 0
-        if idleCounter == idleCounterLimit:
-            continue
-            
-        actualState = reverse_state()
-        for i in range(len(WLED_IPS)):
-            subMatrix = actualState[i*LEDS_PER_WLED:(i+1)*LEDS_PER_WLED]
-            byteString = f"02 02 {' '.join(subMatrix)}"
-            udpPacket = bytes.fromhex(byteString)
-            ip = WLED_IPS[i]
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.sendto(udpPacket, (ip, UDP_PORT))
+        if idleCounter != idleCounterLimit:
+            actualState = reverse_state()
+            for i in range(len(WLED_IPS)):
+                subMatrix = actualState[i*LEDS_PER_WLED:(i+1)*LEDS_PER_WLED]
+                byteString = f"02 02 {' '.join(subMatrix)}"
+                udpPacket = bytes.fromhex(byteString)
+                ip = WLED_IPS[i]
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.sendto(udpPacket, (ip, UDP_PORT))
+                
         time.sleep(0.05)
         
 
@@ -234,7 +233,7 @@ def video_playback(videoName: str):
 """
 @app.get("/videolist")
 def get_video_list():
-    # print(VIDEO_PATH)
+    print(VIDEO_PATH)
     videoList = [video.split("/")[-1] for video in glob.glob(os.path.join(VIDEO_PATH, "*.mp4"))]
     return videoList
     
