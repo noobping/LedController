@@ -236,7 +236,20 @@ def get_video_list():
     print(VIDEO_PATH)
     videoList = [video.split("/")[-1] for video in glob.glob(os.path.join(VIDEO_PATH, "*.mp4"))]
     return videoList
-    
+
+"""
+    Returns the current state of the LED matrix.
+    Each LED's color is represented in "RRGGBB" hex format.
+"""
+@app.get("/status")
+def get_status():
+    """
+    Returns the current state of the LED matrix.
+    Each LED's color is represented in "RRGGBB" hex format.
+    """
+    global currentState
+    return {"status": currentState}
+
 """
     Sets brightness of the WLED controllers and corrects any other
     possible mistakes in the configuration.
