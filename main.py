@@ -251,6 +251,29 @@ def get_status():
     return {"status": currentState}
 
 """
+    Returns the brightness of the LED matrix.
+    The value should be an integer between 0 and 255.
+"""
+@app.get("/brightness")
+def get_brightness():
+    """
+    Fetches the current brightness levels from all WLED controllers.
+    Returns a dictionary with the IP addresses and their corresponding brightness levels.
+    """
+    brightness_levels = {}
+    for ip in WLED_IPS:
+        try:
+            response = requests.get(f"http://{ip}/json")
+            if response.status_code == 200:
+                data = response.json()
+                brightness_levels[ip] = data.get("state", {}).get("bri", "Unknown")
+            else:
+                brightness_levels[ip] = "Error fetching brightness"
+        except Exception as e:
+            brightness_levels[ip] = f"Error: {e}"
+    return {"brightness": brightness_levels}
+
+"""
     Sets brightness of the WLED controllers and corrects any other
     possible mistakes in the configuration.
 """
