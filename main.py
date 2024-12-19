@@ -243,23 +243,15 @@ def get_video_list():
 """
 @app.get("/status")
 def get_status():
-    """
-    Returns the current state of the LED matrix.
-    Each LED's color is represented in "RRGGBB" hex format.
-    """
     global currentState
     return {"status": currentState}
 
 """
-    Returns the brightness of the LED matrix.
-    The value should be an integer between 0 and 255.
+    Fetches the current brightness levels from all WLED controllers.
+    Returns a dictionary with the IP addresses and their corresponding brightness levels.
 """
 @app.get("/brightness")
 def get_brightness():
-    """
-    Fetches the current brightness levels from all WLED controllers.
-    Returns a dictionary with the IP addresses and their corresponding brightness levels.
-    """
     brightness_levels = {}
     for ip in WLED_IPS:
         try:
