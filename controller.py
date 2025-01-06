@@ -2,6 +2,13 @@ import socket
 import time
 import math
 import concurrent.futures
+import logging
+
+# 1. Configure basic logging
+logging.basicConfig(
+    level=logging.INFO,  # set the minimum log level to INFO
+    format='%(asctime)s %(levelname)s %(message)s'
+)
 
 WLED_IPS = [
     "192.168.107.123",
@@ -41,12 +48,22 @@ def build_packet(colors):
 def send_packet(ip, port, packet):
     """Sends a UDP packet to one WLED IP."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.sendto(packet, (ip, port))
-    sock.close()
+    try:
+        sock.sendto(packet, (ip, port))
+        # 2. Log that we sent a packet
+        logging.debug(f"Sent packet of length {len(packet)} bytes to {ip}:{port}")
+    except Exception as e:
+        logging.error(f"Failed to send packet to {ip}:{port} - {e}")
+    finally:
+        sock.close()
 
 def main():
     frame_interval = 1.0 / FPS
     t = 0.0
+
+    # 3. Log startup info
+    logging.info("Starting WLED parallel sender...")
+    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS}, LEDs per controller: {NUM_LEDS}")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
