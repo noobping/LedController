@@ -1,8 +1,8 @@
 import socket
 import time
 import math
+import concurrent.futures
 
-# Four WLED controllers, each with its own IP
 WLED_IPS = [
     "192.168.107.123",
     "192.168.107.122",
@@ -38,23 +38,32 @@ def build_packet(colors):
         packet += bytes([r, g, b])
     return packet
 
-def main():
+def send_packet(ip, port, packet):
+    """Sends a UDP packet to one WLED IP."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(packet, (ip, port))
+    sock.close()
+
+def main():
     frame_interval = 1.0 / FPS
     t = 0.0
 
-    while True:
-        # 1) Generate a color pattern
-        colors = make_frame(t)
-        # 2) Build the DRGB packet (3*NUM_LEDS bytes)
-        packet = build_packet(colors)
-
-        # 3) Send to each WLED IP
-        for ip in WLED_IPS:
-            sock.sendto(packet, (ip, PORT))
-
-        time.sleep(frame_interval)
-        t += frame_interval
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
+        while True:
+            # Build the DRGB packet
+            colors = make_frame(t)
+            packet = build_packet(colors)
+            
+            # Launch a thread for each IP
+            futures = []
+            for ip in WLED_IPS:
+                futures.append(executor.submit(send_packet, ip, PORT, packet))
+            
+            # Optionally wait for all threads to finish
+            concurrent.futures.wait(futures)
+            
+            time.sleep(frame_interval)
+            t += frame_interval
 
 if __name__ == "__main__":
     main()
