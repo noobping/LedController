@@ -37,6 +37,33 @@ def make_rainbow_frame(t, total_num_leds):
     return colors
 
 
+def make_christmas_frame(t, total_num_leds):
+    """
+    Returns a list of (R, G, B) tuples for total_num_leds,
+    creating an animated red-green pattern.
+
+    :param t: The time in seconds since the animation started.
+    :param total_num_leds: The total number of LEDs to color.
+    :return: A list of (R, G, B) tuples.
+    """
+
+    # This "offset" shifts every second (or so) to animate the pattern
+    # Increase or decrease the multiplier (2) for a faster/slower shift
+    offset = int(t * 2)
+    colors = []
+
+    for i in range(total_num_leds):
+        # Decide whether this LED is red or green by looking at (i + offset)
+        if (i + offset) % 2 == 0:
+            # Red
+            colors.append((255, 0, 0))
+        else:
+            # Green
+            colors.append((0, 255, 0))
+
+    return colors
+
+
 def build_packet(colors):
     """
     Builds the DRGB packet (no header, just RGB bytes).
@@ -83,7 +110,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_rainbow_frame(t, total_leds)
+            colors_for_all = make_christmas_frame(t, total_leds)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
