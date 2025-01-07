@@ -125,6 +125,18 @@ def make_custom_wave(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255), 
     return colors
 
 
+def make_static_color(t, total_num_leds, color=(255, 255, 255)):
+    """
+    Return a list of the same (R, G, B) color for all LEDs.
+
+    :param t: Current time (seconds) since animation start (unused here).
+    :param total_num_leds: The total number of LEDs to color.
+    :param color: A tuple (R, G, B) specifying the static color.
+    :return: A list of (R, G, B) tuples, all the same.
+    """
+    return [color] * total_num_leds
+
+
 def build_packet(colors):
     """
     Builds the DRGB packet (no header, just RGB bytes).
