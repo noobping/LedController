@@ -22,7 +22,7 @@ FPS_TARGET = 60
 PORT = 19446  # WLED’s real-time DRGB port
 
 
-def make_rainbow_frame(t, total_num_leds):
+def make_rainbow_wave(t, total_num_leds):
     """
     Returns a list of (R, G, B) tuples for total_num_leds.
     This will allow a continuous rainbow across multiple controllers.
@@ -37,7 +37,7 @@ def make_rainbow_frame(t, total_num_leds):
     return colors
 
 
-def make_christmas_frame(t, total_num_leds):
+def make_christmas_wave(t, total_num_leds):
     """
     Returns a list of (R, G, B) tuples for total_num_leds,
     creating an animated red-green pattern.
@@ -60,6 +60,48 @@ def make_christmas_frame(t, total_num_leds):
         else:
             # Green
             colors.append((0, 255, 0))
+
+    return colors
+
+
+def make_custom_wave(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255), cycle_length=5.0):
+    """
+    Create a custom color pattern for your LEDs.
+
+    In this example, we:
+      1. Blend from color1 to color2 across the strip.
+      2. Shift the blend over time, so it animates.
+
+    :param t: Current time (seconds) since the animation started.
+    :param total_num_leds: Total number of LEDs to color.
+    :param color1: A tuple (R, G, B) for the first color.
+    :param color2: A tuple (R, G, B) for the second color.
+    :param cycle_length: How many seconds it takes to “complete” one full shift.
+    :return: A list of (R, G, B) tuples.
+    """
+    # Extract color channels for convenience
+    r1, g1, b1 = color1
+    r2, g2, b2 = color2
+
+    # We’ll use time (t) to create a shifting ratio between color1 and color2
+    # The ratio will oscillate between 0 and 1 using a sine wave.
+    # Increase/decrease the speed by adjusting '2 * math.pi / cycle_length'.
+    import math
+    ratio = (math.sin((2 * math.pi / cycle_length) * t) + 1) / 2
+
+    colors = []
+    for i in range(total_num_leds):
+        # For each LED, let's also adjust the ratio slightly by i’s position,
+        # so that color transitions from one end of the strip to the other
+        # (You can remove or modify this logic if you want a uniform effect)
+        local_ratio = (ratio + i / total_num_leds) % 1.0
+
+        # Blend each channel independently
+        r = int(r1 * (1.0 - local_ratio) + r2 * local_ratio)
+        g = int(g1 * (1.0 - local_ratio) + g2 * local_ratio)
+        b = int(b1 * (1.0 - local_ratio) + b2 * local_ratio)
+
+        colors.append((r, g, b))
 
     return colors
 
@@ -110,7 +152,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_christmas_frame(t, total_leds)
+            colors_for_all = make_christmas_wave(t, total_leds)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
