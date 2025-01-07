@@ -19,7 +19,7 @@ WLED_IPS = [
 # Each controller has 100 LEDs in DRGB
 NUM_LEDS_PER_CONTROLLER = 100
 BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 120
+FPS_TARGET = 60
 PORT = 19446  # WLED’s real-time DRGB port
 
 
@@ -137,6 +137,40 @@ def make_static_color(t, total_num_leds, color=(255, 255, 255)):
     return [color] * total_num_leds
 
 
+def make_multistrip_static_colors(
+    total_strips,
+    leds_per_strip,
+    color_list
+):
+    """
+    Returns a color array for a multi-strip setup, 
+    where each strip is assigned a single static color
+    from 'color_list'.
+
+    :param total_strips: Number of strips (controllers).
+    :param leds_per_strip: Number of LEDs in each strip.
+    :param color_list: A list of (R, G, B) tuples. 
+                       Must have exactly 'total_strips' items.
+
+    :return: A list of (R, G, B) tuples whose length is 
+             total_strips * leds_per_strip.
+    """
+    if len(color_list) != total_strips:
+        raise ValueError(
+            f"Expected {total_strips} colors, got {len(color_list)}"
+        )
+
+    colors_for_all = []
+    for i in range(total_strips):
+        # The static color for strip i
+        strip_color = color_list[i]
+        # Fill this strip's portion with that color
+        for _ in range(leds_per_strip):
+            colors_for_all.append(strip_color)
+
+    return colors_for_all
+
+
 def build_packet(colors):
     """
     Builds the DRGB packet (no header, just RGB bytes).
@@ -170,7 +204,9 @@ def main():
     t = 0.0
 
     # Calculate total number of LEDs across all controllers
-    total_leds = len(WLED_IPS) * NUM_LEDS_PER_CONTROLLER
+    total_strips = len(WLED_IPS)
+    leds_per_strip = NUM_LEDS_PER_CONTROLLER
+    total_leds = total_strips * leds_per_strip
 
     logging.info("Starting WLED parallel sender...")
     logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}")
@@ -178,6 +214,13 @@ def main():
         f"LEDs per controller: {
             NUM_LEDS_PER_CONTROLLER}, Total LEDs: {total_leds}"
     )
+
+    color_per_strip = [
+        (255, 0, 0),     # Strip 0: Red
+        (0, 255, 0),     # Strip 1: Green
+        (0, 0, 255),     # Strip 2: Blue
+        (255, 255, 0)    # Strip 3: Yellow
+    ]
 
     # Use a ThreadPoolExecutor to send packets “in parallel”
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
@@ -190,7 +233,11 @@ def main():
             #     color2=(64, 128, 64),  # soft green tone
             #     cycle_length=20.0      # gentle wave
             # )
-            colors_for_all = make_christmas_wave(t, total_leds)
+            colors_for_all = make_multistrip_static_colors(
+                total_strips,
+                leds_per_strip,
+                color_per_strip
+            )
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
