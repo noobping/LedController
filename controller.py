@@ -1,4 +1,6 @@
 import socket
+import time
+import math
 import logging
 
 # Configure logging
@@ -7,7 +9,7 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
 
-# Each controller’s position mapped to its IP
+# 4 WLED controllers, each driving 5 strips of 100 LEDs => 500 LEDs total
 controllers = {
     "top_left":     "192.168.107.122",
     "top_right":    "192.168.107.123",
@@ -15,82 +17,94 @@ controllers = {
     "bottom_left":  "192.168.107.121"
 }
 
-# We know each controller has 5 strips, each 100 LEDs => total 500 LEDs
+PORT = 19446     # WLED default realtime DRGB port
+FPS_TARGET = 60
 LEDS_PER_STRIP = 100
 NUM_STRIPS = 5
 TOTAL_LEDS = LEDS_PER_STRIP * NUM_STRIPS  # 500
-PORT = 19446  # WLED Realtime DRGB port
+
+def build_rainbow_frame(t):
+    """
+    Builds a time-based rainbow across all 500 LEDs.
+    The color is determined by a sine-wave function that shifts with time 't'.
+
+    You can tweak the 0.06 multiplier, the (sin(...) + 1) * 127 portion, etc.
+    """
+    colors = []
+    for i in range(TOTAL_LEDS):
+        r = int((math.sin(t + i * 0.06) + 1) * 127)
+        g = int((math.sin(t + i * 0.06 + 2*math.pi/3) + 1) * 127)
+        b = int((math.sin(t + i * 0.06 + 4*math.pi/3) + 1) * 127)
+        colors.append((r, g, b))
+    return colors
 
 def build_packet(color_array):
     """
-    Build a DRGB packet: 3 bytes per LED in order [R, G, B].
-    color_array = list of (R,G,B) of length TOTAL_LEDS.
+    Convert an array of (R,G,B) into a DRGB packet (3 bytes per LED, no header).
     """
     packet = bytearray()
     for (r, g, b) in color_array:
         packet += bytes([r, g, b])
     return packet
 
-def set_strip_color(sockets, position, strip_index, color):
-    """
-    Sets exactly one 'strip_index' (0..4) on the given 'position' controller 
-    to the specified (R,G,B) color, and turns all others off.
-
-    :param sockets: dict of { position: socket.socket }
-    :param position: which controller? e.g. "top_left", "top_right", etc.
-    :param strip_index: which strip? (0-based, 0..4)
-    :param color: (r,g,b) tuple, each 0..255
-    """
-
-    if strip_index < 0 or strip_index >= NUM_STRIPS:
-        logging.error(f"Invalid strip_index {strip_index}")
-        return
-
-    # Create an array for all 500 LEDs
-    color_array = [(0,0,0)] * TOTAL_LEDS
-
-    # Determine the LED indices for the chosen strip
-    start_idx = strip_index * LEDS_PER_STRIP
-    end_idx = start_idx + LEDS_PER_STRIP  # exclusive
-
-    # Fill that slice with the chosen color
-    for i in range(start_idx, end_idx):
-        color_array[i] = color
-
-    # Build the DRGB packet
-    packet = build_packet(color_array)
-
-    # Send the packet over UDP to the controller
-    ip = controllers[position]
-    try:
-        sock = sockets[position]
-        sock.sendto(packet, (ip, PORT))
-        logging.info(f"Set {position} strip #{strip_index} to color={color}")
-    except Exception as e:
-        logging.error(f"Failed to send to {position} ({ip}): {e}")
-
 def main():
-    # 1) Create a socket for each controller (one-time)
+    logging.info("Starting 4-controller rainbow animation...")
+    logging.info("Press Ctrl+C to stop.")
+
+    # 1) Create one UDP socket per controller (so we don't recreate it each frame)
     sockets = {}
-    for pos, ip in controllers.items():
+    for position, ip in controllers.items():
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sockets[pos] = s
+        sockets[position] = s
 
-    # 2) Example usage: set top_left’s strip #2 to pure red
-    set_strip_color(sockets, "top_left", 2, (255, 0, 0))
+    frame_interval = 1.0 / FPS_TARGET
+    next_frame_time = time.time()
+    t = 0.0
 
-    # 3) Example: set bottom_right’s strip #0 to green
-    set_strip_color(sockets, "bottom_right", 0, (0, 255, 0))
+    # For measuring actual FPS
+    frames_sent = 0
+    start_time = time.time()
 
-    # 4) Example: set bottom_left’s strip #4 to white
-    set_strip_color(sockets, "bottom_left", 4, (255, 255, 255))
+    try:
+        while True:
+            now = time.time()
+            if now >= next_frame_time:
+                # 2) Build the rainbow colors for all 500 LEDs
+                color_array = build_rainbow_frame(t)
+                packet = build_packet(color_array)
 
-    # 5) Example: set top_right’s strip #1 to purple
-    set_strip_color(sockets, "top_right", 1, (255, 0, 255))
+                # 3) Send to each controller
+                for position, ip in controllers.items():
+                    sock = sockets[position]
+                    try:
+                        sock.sendto(packet, (ip, PORT))
+                    except Exception as e:
+                        logging.error(f"Send error to {ip}: {e}")
 
-    # Cleanup sockets (if desired, or let program exit)
-    for s in sockets.values():
-        s.close()
+                frames_sent += 1
+
+                # 4) Print measured FPS once per second
+                elapsed = now - start_time
+                if elapsed >= 1.0:
+                    fps = frames_sent / elapsed
+                    logging.info(f"Measured FPS: {fps:.2f}")
+                    frames_sent = 0
+                    start_time = now
+
+                # Schedule next frame
+                next_frame_time += frame_interval
+                t += frame_interval
+            else:
+                # Sleep exactly until next frame is due
+                time.sleep(next_frame_time - now)
+
+    except KeyboardInterrupt:
+        logging.info("Stopping animation...")
+
+    finally:
+        # Cleanly close sockets
+        for s in sockets.values():
+            s.close()
 
 if __name__ == "__main__":
     main()
