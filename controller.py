@@ -152,7 +152,13 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_christmas_wave(t, total_leds)
+            colors_for_all = make_custom_wave(
+                t,
+                total_leds,
+                color1=(255, 0, 0),  # Red
+                color2=(0, 255, 0),  # Green
+                cycle_length=8.0     # Slower or faster wave
+            )
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
