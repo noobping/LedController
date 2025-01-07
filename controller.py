@@ -23,7 +23,7 @@ BYTES_PER_LED = 3   # R, G, B
 FPS_TARGET = 60
 PORT = 19446 # WLED’s real-time DRGB port
 
-def make_frame(t):
+def make_rainbow_frame(t):
     """
     Returns a list of (R, G, B) tuples for NUM_LEDS
     Example: a simple sine-wave rainbow.
@@ -74,7 +74,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create the color frame
-            colors = make_frame(t)
+            colors = make_rainbow_frame(t)
             packet = build_packet(colors)
 
             # 2) Send the packet to each WLED IP in a separate thread
