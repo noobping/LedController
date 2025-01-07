@@ -5,7 +5,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
 
@@ -59,8 +59,9 @@ def send_packet(sockets, ip, port, packet):
         logging.error(f"Failed to send packet to {ip}:{port} - {e}")
 
 def main():
-    logging.info("Starting WLED parallel sender (one socket per IP).")
-    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}, LEDs: {NUM_LEDS}")
+    logging.info("Starting WLED parallel sender...")
+    logging.debug(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, LEDs: {NUM_LEDS}")
+    logging.debug("Press Ctrl+C to stop.")
 
     # 1) Create one UDP socket per IP (and store in a dictionary).
     sockets = {}
@@ -76,6 +77,9 @@ def main():
     # For measuring the actual achieved FPS
     frames_sent = 0
     start_time = time.time()
+
+    logging.info(f"Interval: {frame_interval:.3f} seconds")
+    logging.debug("Sending frames...")
 
     try:
         while True:
