@@ -10,8 +10,8 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 
 WLED_IPS = [
-    "192.168.107.123",  # Top left
-    "192.168.107.122",  # Top right
+    "192.168.107.122",  # Top left
+    "192.168.107.123",  # Top right
     "192.168.107.120",  # Bottom right
     "192.168.107.121",  # Bottom left
 ]
@@ -19,7 +19,7 @@ WLED_IPS = [
 # Each controller has 100 LEDs in DRGB
 NUM_LEDS_PER_CONTROLLER = 100
 BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 60
+FPS_TARGET = 120
 PORT = 19446  # WLED’s real-time DRGB port
 
 
@@ -215,11 +215,13 @@ def main():
             NUM_LEDS_PER_CONTROLLER}, Total LEDs: {total_leds}"
     )
 
+    # Define the colors for each strip
+    # dutchgrit, lucrasoft, finance, technical stuff
     color_per_strip = [
-        (255, 0, 0),     # Strip 0: Red
-        (0, 255, 0),     # Strip 1: Green
-        (0, 0, 255),     # Strip 2: Blue
-        (255, 255, 0)    # Strip 3: Yellow
+        (0, 51, 102),      # dutchgrit - Navy Blue
+        (46, 204, 113),    # lucrasoft - Emerald Green
+        (255, 215, 0),     # finance - Gold
+        (112, 128, 144)    # technical stuff - Slate Grey
     ]
 
     # Use a ThreadPoolExecutor to send packets “in parallel”
