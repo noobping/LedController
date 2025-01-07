@@ -4,9 +4,9 @@ import math
 import concurrent.futures
 import logging
 
-# 1. Configure basic logging
+# Configure basic logging
 logging.basicConfig(
-    level=logging.INFO,  # set the minimum log level to INFO
+    level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s'
 )
 
@@ -19,9 +19,9 @@ WLED_IPS = [
 
 # Suppose each controller has 100 LEDs in DRGB
 NUM_LEDS = 100
-BYTES_PER_LED = 3  # R, G, B
-FPS = 60
-PORT = 19446       # WLED’s default real-time DRGB port (check yours)
+BYTES_PER_LED = 3   # R, G, B
+FPS_TARGET = 60
+PORT = 19446 # WLED’s real-time DRGB port
 
 def make_frame(t):
     """
@@ -58,27 +58,45 @@ def send_packet(ip, port, packet):
         sock.close()
 
 def main():
-    frame_interval = 1.0 / FPS
+    frame_interval = 1.0 / FPS_TARGET
+    
+    # Variables for FPS measurement
+    frames_sent = 0
+    start_time = time.time()
+
     t = 0.0
 
-    # 3. Log startup info
+    # Log startup info
     logging.info("Starting WLED parallel sender...")
-    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS}, LEDs per controller: {NUM_LEDS}")
-
+    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}, LEDs per controller: {NUM_LEDS}")
+    
+    # We can use a ThreadPoolExecutor to dispatch “in parallel”
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
-            # Build the DRGB packet
+            # 1) Create the color frame
             colors = make_frame(t)
             packet = build_packet(colors)
-            
-            # Launch a thread for each IP
+
+            # 2) Send the packet to each WLED IP in a separate thread
             futures = []
             for ip in WLED_IPS:
                 futures.append(executor.submit(send_packet, ip, PORT, packet))
             
-            # Optionally wait for all threads to finish
+            # Wait for all sends to complete before next frame
             concurrent.futures.wait(futures)
             
+            frames_sent += 1
+
+            # 3) Calculate and print FPS every second
+            now = time.time()
+            elapsed = now - start_time
+            if elapsed >= 1.0:
+                fps = frames_sent / elapsed
+                logging.info(f"Measured FPS: {fps:.2f}")
+                # Reset counters
+                frames_sent = 0
+                start_time = now
+
             time.sleep(frame_interval)
             t += frame_interval
 
