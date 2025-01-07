@@ -3,6 +3,7 @@ import time
 import math
 import concurrent.futures
 import logging
+import random
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -18,7 +19,7 @@ WLED_IPS = [
 # Each controller has 100 LEDs in DRGB
 NUM_LEDS_PER_CONTROLLER = 100
 BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 30
+FPS_TARGET = 120
 PORT = 19446  # WLED’s real-time DRGB port
 
 
@@ -61,6 +62,24 @@ def make_christmas_wave(t, total_num_leds):
             # Green
             colors.append((0, 255, 0))
 
+    return colors
+
+
+def make_random_wave(t, total_num_leds):
+    """
+    Create an color array with random colors
+    to each LED on every frame. This will cause flicker and chaos.
+
+    :param t: Current time in seconds (unused, but included for consistency).
+    :param total_num_leds: Total number of LEDs to color.
+    :return: A list of (R, G, B) tuples with random colors.
+    """
+    colors = []
+    for _ in range(total_num_leds):
+        r = random.randint(0, 255)
+        g = random.randint(0, 255)
+        b = random.randint(0, 255)
+        colors.append((r, g, b))
     return colors
 
 
@@ -152,13 +171,14 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_custom_wave(
-                t,
-                total_leds,
-                color1=(128, 64, 64),  # soft red tone
-                color2=(64, 128, 64),  # soft green tone
-                cycle_length=20.0      # gentle wave
-            )
+            # colors_for_all = make_custom_wave(
+            #     t,
+            #     total_leds,
+            #     color1=(128, 64, 64),  # soft red tone
+            #     color2=(64, 128, 64),  # soft green tone
+            #     cycle_length=20.0      # gentle wave
+            # )
+            colors_for_all = make_christmas_wave(t, total_leds)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
