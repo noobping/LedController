@@ -1,110 +1,145 @@
 import socket
 import time
 import math
+import concurrent.futures
 import logging
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(message)s")
 
-# 4 WLED controllers, each driving 5 strips of 100 LEDs => 500 LEDs total
-controllers = {
-    "top_left":     "192.168.107.122",
-    "top_right":    "192.168.107.123",
-    "bottom_right": "192.168.107.120",
-    "bottom_left":  "192.168.107.121"
-}
+WLED_IPS = [
+    "192.168.107.123",  # Top left
+    "192.168.107.122",  # Top right
+    "192.168.107.120",  # Bottom right
+    "192.168.107.121",  # Bottom left
+]
 
-PORT = 19446     # WLED default realtime DRGB port
+# Each controller has 100 LEDs in DRGB
+NUM_LEDS_PER_CONTROLLER = 100
+BYTES_PER_LED = 3  # R, G, B
 FPS_TARGET = 60
-LEDS_PER_STRIP = 100
-NUM_STRIPS = 5
-TOTAL_LEDS = LEDS_PER_STRIP * NUM_STRIPS  # 500
+PORT = 19446  # WLED’s real-time DRGB port
 
-def build_rainbow_frame(t):
+
+def make_rainbow_frame(t, total_num_leds):
     """
-    Builds a time-based rainbow across all 500 LEDs.
-    The color is determined by a sine-wave function that shifts with time 't'.
-
-    You can tweak the 0.06 multiplier, the (sin(...) + 1) * 127 portion, etc.
+    Returns a list of (R, G, B) tuples for total_num_leds.
+    This will allow a continuous rainbow across multiple controllers.
     """
     colors = []
-    for i in range(TOTAL_LEDS):
+    for i in range(total_num_leds):
+        # Adjust the 0.06 “speed” factor as desired
         r = int((math.sin(t + i * 0.06) + 1) * 127)
-        g = int((math.sin(t + i * 0.06 + 2*math.pi/3) + 1) * 127)
-        b = int((math.sin(t + i * 0.06 + 4*math.pi/3) + 1) * 127)
+        g = int((math.sin(t + i * 0.06 + 2 * math.pi / 3) + 1) * 127)
+        b = int((math.sin(t + i * 0.06 + 4 * math.pi / 3) + 1) * 127)
         colors.append((r, g, b))
     return colors
 
-def build_packet(color_array):
+
+def make_christmas_frame(t, total_num_leds):
     """
-    Convert an array of (R,G,B) into a DRGB packet (3 bytes per LED, no header).
+    Returns a list of (R, G, B) tuples for total_num_leds,
+    creating an animated red-green pattern.
+
+    :param t: The time in seconds since the animation started.
+    :param total_num_leds: The total number of LEDs to color.
+    :return: A list of (R, G, B) tuples.
+    """
+
+    # This "offset" shifts every second (or so) to animate the pattern
+    # Increase or decrease the multiplier (2) for a faster/slower shift
+    offset = int(t * 2)
+    colors = []
+
+    for i in range(total_num_leds):
+        # Decide whether this LED is red or green by looking at (i + offset)
+        if (i + offset) % 2 == 0:
+            # Red
+            colors.append((255, 0, 0))
+        else:
+            # Green
+            colors.append((0, 255, 0))
+
+    return colors
+
+
+def build_packet(colors):
+    """
+    Builds the DRGB packet (no header, just RGB bytes).
     """
     packet = bytearray()
-    for (r, g, b) in color_array:
+    for r, g, b in colors:
         packet += bytes([r, g, b])
     return packet
 
+
+def send_packet(ip, port, packet):
+    """Sends a UDP packet to one WLED IP."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(packet, (ip, port))
+        logging.debug(f"Sent packet of length {
+                      len(packet)} bytes to {ip}:{port}")
+    except Exception as e:
+        logging.error(f"Failed to send packet to {ip}:{port} - {e}")
+    finally:
+        sock.close()
+
+
 def main():
-    logging.info("Starting 4-controller rainbow animation...")
-    logging.info("Press Ctrl+C to stop.")
-
-    # 1) Create one UDP socket per controller (so we don't recreate it each frame)
-    sockets = {}
-    for position, ip in controllers.items():
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sockets[position] = s
-
     frame_interval = 1.0 / FPS_TARGET
-    next_frame_time = time.time()
-    t = 0.0
 
-    # For measuring actual FPS
+    # Variables for FPS measurement
     frames_sent = 0
     start_time = time.time()
 
-    try:
+    t = 0.0
+
+    # Calculate total number of LEDs across all controllers
+    total_leds = len(WLED_IPS) * NUM_LEDS_PER_CONTROLLER
+
+    logging.info("Starting WLED parallel sender...")
+    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}")
+    logging.info(
+        f"LEDs per controller: {
+            NUM_LEDS_PER_CONTROLLER}, Total LEDs: {total_leds}"
+    )
+
+    # Use a ThreadPoolExecutor to send packets “in parallel”
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
+            # 1) Create one large color array for the ENTIRE 400-LED strip
+            colors_for_all = make_christmas_frame(t, total_leds)
+
+            # 2) Build and send a separate packet for each controller's slice
+            futures = []
+            for idx, ip in enumerate(WLED_IPS):
+                # Slice out this controller's 100 LEDs
+                start_idx = idx * NUM_LEDS_PER_CONTROLLER
+                end_idx = start_idx + NUM_LEDS_PER_CONTROLLER
+                controller_colors = colors_for_all[start_idx:end_idx]
+
+                # Build the packet for this subset and send
+                packet = build_packet(controller_colors)
+                futures.append(executor.submit(send_packet, ip, PORT, packet))
+
+            frames_sent += 1
+
+            # 3) Calculate and print FPS every second
             now = time.time()
-            if now >= next_frame_time:
-                # 2) Build the rainbow colors for all 500 LEDs
-                color_array = build_rainbow_frame(t)
-                packet = build_packet(color_array)
+            elapsed = now - start_time
+            if elapsed >= 1.0:
+                fps = frames_sent / elapsed
+                logging.info(f"Measured FPS: {fps:.2f}")
+                # Reset counters
+                frames_sent = 0
+                start_time = now
 
-                # 3) Send to each controller
-                for position, ip in controllers.items():
-                    sock = sockets[position]
-                    try:
-                        sock.sendto(packet, (ip, PORT))
-                    except Exception as e:
-                        logging.error(f"Send error to {ip}: {e}")
+            # 4) Sleep to maintain target FPS and increment time
+            time.sleep(frame_interval)
+            t += frame_interval
 
-                frames_sent += 1
-
-                # 4) Print measured FPS once per second
-                elapsed = now - start_time
-                if elapsed >= 1.0:
-                    fps = frames_sent / elapsed
-                    logging.info(f"Measured FPS: {fps:.2f}")
-                    frames_sent = 0
-                    start_time = now
-
-                # Schedule next frame
-                next_frame_time += frame_interval
-                t += frame_interval
-            else:
-                # Sleep exactly until next frame is due
-                time.sleep(next_frame_time - now)
-
-    except KeyboardInterrupt:
-        logging.info("Stopping animation...")
-
-    finally:
-        # Cleanly close sockets
-        for s in sockets.values():
-            s.close()
 
 if __name__ == "__main__":
     main()
