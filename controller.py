@@ -18,7 +18,7 @@ WLED_IPS = [
 # Each controller has 100 LEDs in DRGB
 NUM_LEDS_PER_CONTROLLER = 100
 BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 60
+FPS_TARGET = 30
 PORT = 19446  # WLED’s real-time DRGB port
 
 
@@ -155,9 +155,9 @@ def main():
             colors_for_all = make_custom_wave(
                 t,
                 total_leds,
-                color1=(255, 0, 0),  # Red
-                color2=(0, 255, 0),  # Green
-                cycle_length=8.0     # Slower or faster wave
+                color1=(128, 64, 64),  # soft red tone
+                color2=(64, 128, 64),  # soft green tone
+                cycle_length=20.0      # gentle wave
             )
 
             # 2) Build and send a separate packet for each controller's slice
