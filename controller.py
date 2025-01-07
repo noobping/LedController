@@ -1,124 +1,96 @@
 import socket
-import time
-import math
 import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
 
-# Four WLED controllers
-WLED_IPS = [
-    "192.168.107.123",
-    "192.168.107.122",
-    "192.168.107.120",
-    "192.168.107.121"
-]
+# Each controller’s position mapped to its IP
+controllers = {
+    "top_left":     "192.168.107.122",
+    "top_right":    "192.168.107.123",
+    "bottom_right": "192.168.107.120",
+    "bottom_left":  "192.168.107.121"
+}
 
-# Per-controller LED configuration
-NUM_LEDS = 100
-FPS_TARGET = 60
-PORT = 19446  # WLED Realtime UDP (DRGB) port
+# We know each controller has 5 strips, each 100 LEDs => total 500 LEDs
+LEDS_PER_STRIP = 100
+NUM_STRIPS = 5
+TOTAL_LEDS = LEDS_PER_STRIP * NUM_STRIPS  # 500
+PORT = 19446  # WLED Realtime DRGB port
 
-def make_rainbow_frame(t):
+def build_packet(color_array):
     """
-    Returns a list of (R, G, B) tuples for NUM_LEDS
-    Example: a simple sine-wave rainbow.
-    """
-    colors = []
-    for i in range(NUM_LEDS):
-        # This is just an example pattern:
-        r = int((math.sin(t + i*0.06) + 1) * 127)
-        g = int((math.sin(t + i*0.06 + 2*math.pi/3) + 1) * 127)
-        b = int((math.sin(t + i*0.06 + 4*math.pi/3) + 1) * 127)
-        colors.append((r, g, b))
-    return colors
-
-def build_packet(colors):
-    """
-    Builds the DRGB packet (no header, just RGB bytes).
+    Build a DRGB packet: 3 bytes per LED in order [R, G, B].
+    color_array = list of (R,G,B) of length TOTAL_LEDS.
     """
     packet = bytearray()
-    for (r, g, b) in colors:
+    for (r, g, b) in color_array:
         packet += bytes([r, g, b])
     return packet
 
-def send_packet(sockets, ip, port, packet):
+def set_strip_color(sockets, position, strip_index, color):
     """
-    Sends a UDP packet to one WLED IP using a pre-opened socket.
-    :param sockets: dict of { ip: socket.socket }
-    :param ip: the IP address (string)
-    :param port: the UDP port (int)
-    :param packet: the raw bytes to send
+    Sets exactly one 'strip_index' (0..4) on the given 'position' controller 
+    to the specified (R,G,B) color, and turns all others off.
+
+    :param sockets: dict of { position: socket.socket }
+    :param position: which controller? e.g. "top_left", "top_right", etc.
+    :param strip_index: which strip? (0-based, 0..4)
+    :param color: (r,g,b) tuple, each 0..255
     """
+
+    if strip_index < 0 or strip_index >= NUM_STRIPS:
+        logging.error(f"Invalid strip_index {strip_index}")
+        return
+
+    # Create an array for all 500 LEDs
+    color_array = [(0,0,0)] * TOTAL_LEDS
+
+    # Determine the LED indices for the chosen strip
+    start_idx = strip_index * LEDS_PER_STRIP
+    end_idx = start_idx + LEDS_PER_STRIP  # exclusive
+
+    # Fill that slice with the chosen color
+    for i in range(start_idx, end_idx):
+        color_array[i] = color
+
+    # Build the DRGB packet
+    packet = build_packet(color_array)
+
+    # Send the packet over UDP to the controller
+    ip = controllers[position]
     try:
-        sockets[ip].sendto(packet, (ip, port))
+        sock = sockets[position]
+        sock.sendto(packet, (ip, PORT))
+        logging.info(f"Set {position} strip #{strip_index} to color={color}")
     except Exception as e:
-        logging.error(f"Failed to send packet to {ip}:{port} - {e}")
+        logging.error(f"Failed to send to {position} ({ip}): {e}")
 
 def main():
-    logging.info("Starting WLED parallel sender...")
-    logging.debug(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, LEDs: {NUM_LEDS}")
-    logging.debug("Press Ctrl+C to stop.")
-
-    # 1) Create one UDP socket per IP (and store in a dictionary).
+    # 1) Create a socket for each controller (one-time)
     sockets = {}
-    for ip in WLED_IPS:
+    for pos, ip in controllers.items():
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sockets[ip] = s
+        sockets[pos] = s
 
-    # 2) Timing variables
-    frame_interval = 1.0 / FPS_TARGET
-    t = 0.0
-    next_frame_time = time.time()
+    # 2) Example usage: set top_left’s strip #2 to pure red
+    set_strip_color(sockets, "top_left", 2, (255, 0, 0))
 
-    # For measuring the actual achieved FPS
-    frames_sent = 0
-    start_time = time.time()
+    # 3) Example: set bottom_right’s strip #0 to green
+    set_strip_color(sockets, "bottom_right", 0, (0, 255, 0))
 
-    logging.info(f"Interval: {frame_interval:.3f} seconds")
-    logging.debug("Sending frames...")
+    # 4) Example: set bottom_left’s strip #4 to white
+    set_strip_color(sockets, "bottom_left", 4, (255, 255, 255))
 
-    try:
-        while True:
-            now = time.time()
+    # 5) Example: set top_right’s strip #1 to purple
+    set_strip_color(sockets, "top_right", 1, (255, 0, 255))
 
-            # If it's time (or past time) for the next frame...
-            if now >= next_frame_time:
-                # Build the color data
-                colors = make_rainbow_frame(t)
-                packet = build_packet(colors)
-
-                # Send to each WLED IP sequentially (fast enough for 4 IPs)
-                for ip in WLED_IPS:
-                    send_packet(sockets, ip, PORT, packet)
-
-                # Increment our FPS counter
-                frames_sent += 1
-
-                # Calculate and log FPS every second
-                elapsed = now - start_time
-                if elapsed >= 1.0:
-                    fps = frames_sent / elapsed
-                    logging.info(f"Measured FPS: {fps:.2f}")
-                    frames_sent = 0
-                    start_time = now
-
-                # Schedule the next frame time
-                next_frame_time += frame_interval
-                t += frame_interval
-
-            else:
-                # Sleep only until the next frame is due
-                time.sleep(next_frame_time - now)
-
-    finally:
-        # 3) Cleanly close all sockets if we exit the loop (Ctrl+C, etc.)
-        for s in sockets.values():
-            s.close()
-        logging.info("Sockets closed, exiting.")
+    # Cleanup sockets (if desired, or let program exit)
+    for s in sockets.values():
+        s.close()
 
 if __name__ == "__main__":
     main()
