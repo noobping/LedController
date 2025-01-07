@@ -10,10 +10,10 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 
 WLED_IPS = [
-    "192.168.107.122",  # Top left
-    "192.168.107.123",  # Top right
-    "192.168.107.120",  # Bottom right
-    "192.168.107.121",  # Bottom left
+    "192.168.107.122",  # Index 0 -> Top left (Lucrasoft)
+    "192.168.107.123",  # Index 1 -> Top right (DutchGrit)
+    "192.168.107.120",  # Index 2 -> Bottom right (Technical Stuff)
+    "192.168.107.121",  # Index 3 -> Bottom left (Finance)
 ]
 
 # Each controller has 100 LEDs in DRGB
@@ -216,25 +216,17 @@ def main():
     )
 
     # Define the colors for each strip
-    # dutchgrit, lucrasoft, finance, technical stuff
     color_per_strip = [
-        (0, 51, 102),      # dutchgrit - Navy Blue
-        (46, 204, 113),    # lucrasoft - Emerald Green
-        (255, 215, 0),     # finance - Gold
-        (112, 128, 144)    # technical stuff - Slate Grey
+        (0, 51, 102),     # Lucrasoft - Navy Blue
+        (255, 165, 0),    # DutchGrit - Orange
+        (112, 128, 144),  # Technical Stuff - Slate Gray
+        (255, 215, 0)     # Finance - Gold
     ]
 
     # Use a ThreadPoolExecutor to send packets “in parallel”
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            # colors_for_all = make_custom_wave(
-            #     t,
-            #     total_leds,
-            #     color1=(128, 64, 64),  # soft red tone
-            #     color2=(64, 128, 64),  # soft green tone
-            #     cycle_length=20.0      # gentle wave
-            # )
             colors_for_all = make_multistrip_static_colors(
                 total_strips,
                 leds_per_strip,
