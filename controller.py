@@ -25,7 +25,7 @@ LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20 LEDs per w
 WLED_CONTROLLERS = len(WLED_IPS)  # 4 controllers
 TOTAL_LEDS = LEDS_PER_CONTROLLER * WLED_CONTROLLERS  # 400 LEDs
 BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 15  # Target frames per second
+FPS_TARGET = 120  # Target frames per second
 PORT = 19446  # WLED’s real-time port
 
 
@@ -41,41 +41,6 @@ def make_rainbow_frame(t: float) -> List[Tuple[int, int, int]]:
         g = int((math.sin(t + i * 0.06 + 2 * math.pi / 3) + 1) * 127)
         b = int((math.sin(t + i * 0.06 + 4 * math.pi / 3) + 1) * 127)
         colors.append((r, g, b))
-    return colors
-
-
-def make_christmas_frame(t: float) -> List[Tuple[int, int, int]]:
-    """
-    Create an animated red-green Christmas pattern with blocks of 20 LEDs each.
-
-    Args:
-        t (float): The elapsed time in seconds.
-
-    Returns:
-        List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
-    """
-    cycle_length = 2 * LEDS_PER_WINDOW  # Total LEDs for one red and one green block (40)
-    colors = []
-
-    # Define how often to shift (e.g., every 0.5 seconds)
-    shift_interval = 0.5  # seconds per 20-LED shift
-
-    # Calculate the number of 20-LED shifts that have occurred
-    shift_steps = int(t / shift_interval)
-
-    # Total shift in LEDs (each shift step is 20 LEDs)
-    shift = (shift_steps * LEDS_PER_WINDOW) % cycle_length
-
-    for i in range(TOTAL_LEDS):
-        # Determine the position within the current cycle with block shift
-        position = (i + shift) % cycle_length
-
-        # Assign color based on the shifted position
-        if position < LEDS_PER_WINDOW:
-            colors.append((255, 0, 0))  # Red
-        else:
-            colors.append((0, 255, 0))  # Green
-
     return colors
 
 
@@ -367,7 +332,7 @@ def main():
             elapsed_time = current_time - start_time
 
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_christmas_frame(elapsed_time)
+            colors_for_all = make_rainbow_frame(t)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
