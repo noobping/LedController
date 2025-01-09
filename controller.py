@@ -181,17 +181,21 @@ def build_packet(colors):
     return packet
 
 
-def send_packet(ip, port, packet):
-    """Sends a UDP packet to one WLED IP."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.sendto(packet, (ip, port))
-        logging.debug(f"Sent packet of length {
-                      len(packet)} bytes to {ip}:{port}")
-    except Exception as e:
-        logging.error(f"Failed to send packet to {ip}:{port} - {e}")
-    finally:
-        sock.close()
+def send_packet(ip: str, port: int, packet: bytes) -> None:
+    """
+    Send a UDP packet to a specified WLED controller.
+
+    Args:
+        ip (str): IP address of the WLED controller.
+        port (int): Port number to send the packet to.
+        packet (bytes): The packet to send.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        try:
+            sock.sendto(packet, (ip, port))
+            logging.debug(f"Sent packet of {len(packet)} bytes to {ip}:{port}")
+        except Exception as e:
+            logging.error(f"Failed to send packet to {ip}:{port} - {e}")
 
 
 def main():
