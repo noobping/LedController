@@ -49,7 +49,7 @@ def make_christmas_frame(t: float) -> List[Tuple[int, int, int]]:
     Create an animated red-green Christmas pattern with blocks of 20 LEDs each.
 
     Args:
-        t (float): The floating-point number representing the shift amount. It can include fractional LED shifts.
+        t (float): The elapsed time in seconds.
 
     Returns:
         List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
@@ -57,11 +57,20 @@ def make_christmas_frame(t: float) -> List[Tuple[int, int, int]]:
     cycle_length = 2 * LEDS_PER_WINDOW  # Total LEDs for one red and one green block (40)
     colors = []
 
-    for i in range(TOTAL_LEDS):
-        # Determine the position within the current cycle with float shift
-        position = (i + t) % cycle_length
+    # Define how often to shift (e.g., every 0.5 seconds)
+    shift_interval = 0.5  # seconds per 20-LED shift
 
-        # Use a threshold to create red or green based on the position
+    # Calculate the number of 20-LED shifts that have occurred
+    shift_steps = int(t / shift_interval)
+
+    # Total shift in LEDs (each shift step is 20 LEDs)
+    shift = (shift_steps * LEDS_PER_WINDOW) % cycle_length
+
+    for i in range(TOTAL_LEDS):
+        # Determine the position within the current cycle with block shift
+        position = (i + shift) % cycle_length
+
+        # Assign color based on the shifted position
         if position < LEDS_PER_WINDOW:
             colors.append((255, 0, 0))  # Red
         else:
@@ -358,7 +367,7 @@ def main():
             elapsed_time = current_time - start_time
 
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_christmas_frame(t)
+            colors_for_all = make_christmas_frame(elapsed_time)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
