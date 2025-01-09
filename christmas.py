@@ -23,6 +23,7 @@ LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20 LEDs per w
 WLED_CONTROLLERS = len(WLED_IPS)  # 4 controllers
 TOTAL_LEDS = LEDS_PER_CONTROLLER * WLED_CONTROLLERS  # 400 LEDs
 BYTES_PER_LED = 3  # R, G, B
+FRAME_INTERVAL = 5  # 5 seconds per frame
 PORT = 19446  # WLED’s real-time port
 
 
@@ -105,7 +106,6 @@ def main():
     )
 
     t: bool = False
-    frame_interval = 5  # 5 seconds per frame
 
     # Use a ThreadPoolExecutor to send packets “in parallel”
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
@@ -129,7 +129,7 @@ def main():
             concurrent.futures.wait(futures)
 
             # 4) Sleep to maintain target FPS and increment time
-            time.sleep(frame_interval)
+            time.sleep(FRAME_INTERVAL)
             t = not t
 
 
