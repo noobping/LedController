@@ -44,23 +44,25 @@ def make_rainbow_frame(t: float) -> List[Tuple[int, int, int]]:
     return colors
 
 
-def make_christmas_frame(offset: int) -> List[Tuple[int, int, int]]:
+def make_christmas_frame(t: float) -> List[Tuple[int, int, int]]:
     """
     Create an animated red-green Christmas pattern with blocks of 20 LEDs each.
 
     Args:
-        offset (int): The number of LEDs to shift the pattern by.
+        t (float): The floating-point number representing the shift amount. It can include fractional LED shifts.
 
     Returns:
         List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
     """
-    cycle_length = 2 * \
-        LEDS_PER_WINDOW  # Total LEDs for one red and one green block (40)
+    cycle_length = 2 * LEDS_PER_WINDOW  # Total LEDs for one red and one green block (40)
     colors = []
 
     for i in range(TOTAL_LEDS):
-        # Determine the position within the current cycle
-        if (i + offset) % cycle_length < LEDS_PER_WINDOW:
+        # Determine the position within the current cycle with float shift
+        position = (i + t) % cycle_length
+
+        # Use a threshold to create red or green based on the position
+        if position < LEDS_PER_WINDOW:
             colors.append((255, 0, 0))  # Red
         else:
             colors.append((0, 255, 0))  # Green
