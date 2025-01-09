@@ -46,26 +46,24 @@ def make_rainbow_frame(t: float) -> List[Tuple[int, int, int]]:
 
 def make_christmas_frame(offset: int) -> List[Tuple[int, int, int]]:
     """
-    Returns a list of (R, G, B) tuples for TOTAL_LEDS,
-    creating an animated red-green pattern.
+    Create an animated red-green Christmas pattern with blocks of 20 LEDs each.
 
-    :param t: The time in seconds since the animation started.
-    :return: A list of (R, G, B) tuples.
+    Args:
+        offset (int): The number of LEDs to shift the pattern by.
+
+    Returns:
+        List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
     """
-
-    # This "offset" shifts every second (or so) to animate the pattern
-    # Increase or decrease the multiplier (2) for a faster/slower shift
-    offset = int(offset * 2)
+    cycle_length = 2 * \
+        LEDS_PER_WINDOW  # Total LEDs for one red and one green block (40)
     colors = []
 
     for i in range(TOTAL_LEDS):
-        # Decide whether this LED is red or green by looking at (i + offset)
-        if (i + offset) % 2 == 0:
-            # Red
-            colors.append((255, 0, 0))
+        # Determine the position within the current cycle
+        if (i + offset) % cycle_length < LEDS_PER_WINDOW:
+            colors.append((255, 0, 0))  # Red
         else:
-            # Green
-            colors.append((0, 255, 0))
+            colors.append((0, 255, 0))  # Green
 
     return colors
 
@@ -362,7 +360,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_multistrip_frame(color_per_strip)
+            colors_for_all = make_christmas_frame(t)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
