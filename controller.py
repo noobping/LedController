@@ -353,6 +353,10 @@ def main():
     # Use a ThreadPoolExecutor to send packets “in parallel”
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
+            # Calculate elapsed time
+            current_time = time.time()
+            elapsed_time = current_time - start_time
+
             # 1) Create one large color array for the ENTIRE 400-LED strip
             colors_for_all = make_christmas_frame(t)
 
@@ -371,14 +375,12 @@ def main():
             frames_sent += 1
 
             # 3) Calculate and print FPS every second
-            now = time.time()
-            elapsed = now - start_time
-            if elapsed >= 1.0:
-                fps = frames_sent / elapsed
+            if elapsed_time >= 1.0:
+                fps = frames_sent / elapsed_time
                 logging.info(f"Measured FPS: {fps:.2f}")
                 # Reset counters
                 frames_sent = 0
-                start_time = now
+                start_time = current_time
 
             # 4) Sleep to maintain target FPS and increment time
             time.sleep(frame_interval)
