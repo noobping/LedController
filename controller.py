@@ -1,14 +1,14 @@
 import socket
 import time
-import math
 import concurrent.futures
 import logging
-import random
 from typing import List, Tuple
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
 
 # Constants
 WLED_IPS = [
@@ -21,20 +21,23 @@ WLED_IPS = [
 WINDOWS_PER_CONTROLLER = 5
 LEDS_PER_CONTROLLER = 100
 # 20 LEDs per window
-LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20 LEDs per window
+LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER
 WLED_CONTROLLERS = len(WLED_IPS)  # 4 controllers
 TOTAL_LEDS = LEDS_PER_CONTROLLER * WLED_CONTROLLERS  # 400 LEDs
 BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 120  # Target frames per second
+FPS_TARGET = 60  # Target frames per second
 PORT = 19446  # WLED’s real-time port
 
 
 def make_colored_frame(color: Tuple[int, int, int] = (255, 255, 255)) -> List[Tuple[int, int, int]]:
     """
-    Return a list of the same (R, G, B) color for all LEDs.
+    Generate a static color pattern where all LEDs are the same color.
 
-    :param color: A tuple (R, G, B) specifying the static color.
-    :return: A list of (R, G, B) tuples, all the same.
+    Args:
+        color (Tuple[int, int, int], optional): Static color as (R, G, B). Defaults to (255, 255, 255).
+
+    Returns:
+        List[Tuple[int, int, int]]: A list of identical (R, G, B) tuples.
     """
     return [color] * TOTAL_LEDS
 
@@ -86,16 +89,6 @@ def make_manual_frame(
     return colors_for_all
 
 
-def build_packet(colors):
-    """
-    Builds the DRGB packet (no header, just RGB bytes).
-    """
-    packet = bytearray()
-    for r, g, b in colors:
-        packet += bytes([r, g, b])
-    return packet
-
-
 def build_packets(colors_for_all: List[Tuple[int, int, int]]) -> List[Tuple[str, bytes]]:
     """
     Construct DNRGB packets for each WLED controller from the combined colors list.
@@ -110,14 +103,6 @@ def build_packets(colors_for_all: List[Tuple[int, int, int]]) -> List[Tuple[str,
     Returns:
         List[Tuple[str, bytes]]: List of tuples containing IP and packet bytes for each controller.
     """
-    # Ensure each controller has exactly LEDS_PER_CONTROLLER
-    expected_len = LEDS_PER_CONTROLLER * WLED_CONTROLLERS
-    if len(colors_for_all) != expected_len:
-        raise ValueError(
-            f"colors_for_all length {len(colors_for_all)} does not match expected {
-                expected_len} LEDs."
-        )
-
     packets = []
     for idx, ip in enumerate(WLED_IPS):
         start_idx = 0
@@ -189,10 +174,10 @@ def send_packet(ip: str, port: int, packet: bytes) -> None:
 
 
 def main():
-    frame_interval = 1.0 / FPS_TARGET # Time between frames in seconds
-    frames_sent = 0 # Number of frames sent in the last second
-    start_time = time.time() # Time in seconds
-    t = 0.0 # Time in seconds
+    frame_interval = 1.0 / FPS_TARGET  # Time between frames in seconds
+    frames_sent = 0  # Number of frames sent in the last second
+    start_time = time.time()  # Time in seconds
+    t = 0.0  # Time in seconds
 
     logging.info("Starting WLED parallel sender...")
     logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}")
@@ -254,7 +239,7 @@ def main():
             elapsed_time = current_time - start_time
 
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_rainbow_frame(t)
+            colors_for_all = make_manual_frame(color_per_window_per_controller)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
@@ -265,7 +250,7 @@ def main():
                 controller_colors = colors_for_all[start_idx:end_idx]
 
                 # Build the packet for this subset and send
-                packet = build_packet(controller_colors)
+                packet = build_packets(controller_colors)
                 futures.append(executor.submit(send_packet, ip, PORT, packet))
 
             frames_sent += 1
