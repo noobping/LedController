@@ -1,8 +1,7 @@
 import logging
 from typing import List, Tuple
 
-from animation import run_animation_interval
-from settings import LEDS_PER_WINDOW, TOTAL_LEDS, FPS_TARGET, FRAME_INTERVAL, PORT, WLED_IPS, LEDS_PER_CONTROLLER
+from settings import LEDS_PER_WINDOW, TOTAL_LEDS
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG,
@@ -39,12 +38,12 @@ def make_christmas_frame(enabled: bool = True, **state) -> List[Tuple[int, int, 
 
 
 if __name__ == "__main__":
+    from animation import run_animation_interval
     run_animation_interval(
         frame_factory=make_christmas_frame,
         frame_args=(),             # No positional arguments needed
         frame_kwargs={},           # No keyword arguments needed
         state={"enabled": False},   # Initial state
         frame_interval=5,
-        fps_target=5,
-        port=PORT
+        fps_target=5
     )
