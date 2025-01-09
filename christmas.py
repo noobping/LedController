@@ -45,6 +45,6 @@ if __name__ == "__main__":
         frame_kwargs={},           # No keyword arguments needed
         state={"enabled": False},   # Initial state
         frame_interval=5,
-        fps_target=0.5,
+        fps_target=5,
         port=PORT
     )
