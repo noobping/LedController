@@ -1,5 +1,5 @@
 import random
-from ast import List, Tuple
+from typing import List, Tuple
 from settings import TOTAL_LEDS
 
 
@@ -8,7 +8,6 @@ def make_random_frame() -> List[Tuple[int, int, int]]:
     Create an color array with random colors
     to each LED on every frame. This will cause flicker and chaos.
 
-    :param t: Current time in seconds (unused, but included for consistency).
     :return: A list of (R, G, B) tuples with random colors.
     """
     colors = []
@@ -21,7 +20,7 @@ def make_random_frame() -> List[Tuple[int, int, int]]:
 
 
 def make_custom_frame(
-    t: float,
+    fps_counter: float,
     color1: Tuple[int, int, int] = (255, 0, 0),
     color2: Tuple[int, int, int] = (0, 0, 255),
     cycle_length: float = 5.0
@@ -33,7 +32,7 @@ def make_custom_frame(
       1. Blend from color1 to color2 across the strip.
       2. Shift the blend over time, so it animates.
 
-    :param t: Current time (seconds) since the animation started.
+    :param fps_counter: Current time (seconds) since the animation started.
     :param color1: A tuple (R, G, B) for the first color.
     :param color2: A tuple (R, G, B) for the second color.
     :param cycle_length: How many seconds it takes to “complete” one full shift.
@@ -43,11 +42,11 @@ def make_custom_frame(
     r1, g1, b1 = color1
     r2, g2, b2 = color2
 
-    # We’ll use time (t) to create a shifting ratio between color1 and color2
+    # We’ll use time (fps_counter) to create a shifting ratio between color1 and color2
     # The ratio will oscillate between 0 and 1 using a sine wave.
     # Increase/decrease the speed by adjusting '2 * math.pi / cycle_length'.
     import math
-    ratio = (math.sin((2 * math.pi / cycle_length) * t) + 1) / 2
+    ratio = (math.sin((2 * math.pi / cycle_length) * fps_counter) + 1) / 2
 
     colors = []
     for i in range(TOTAL_LEDS):
@@ -64,3 +63,16 @@ def make_custom_frame(
         colors.append((r, g, b))
 
     return colors
+
+
+if __name__ == "__main__":
+    # Example usage
+    from animation import run_animation_frames
+
+    run_animation_frames(
+        frame_factory=make_custom_frame,
+        frame_args=(),  # No positional arguments needed
+        frame_kwargs={"color1": (255, 0, 0), "color2": (
+            0, 0, 255), "cycle_length": 5.0},
+        fps_target=5
+    )
