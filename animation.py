@@ -40,7 +40,8 @@ def build_packets(colors_for_all: List[Tuple[int, int, int]]) -> List[Tuple[str,
         end_idx = start_idx + LEDS_PER_CONTROLLER
         controller_colors = colors_for_all[start_idx:end_idx]
         # Flatten the list of tuples into bytes
-        packet = bytes([value for color in controller_colors for value in color])
+        packet = bytes(
+            [value for color in controller_colors for value in color])
         packets.append((ip, packet))
     return packets
 
@@ -50,42 +51,52 @@ def run_animation_interval(
     frame_args: Optional[tuple] = None,
     frame_kwargs: Optional[dict] = None,
     state: Optional[dict] = None,
-    frame_interval: float = FRAME_INTERVAL,
-    fps_target: int = FPS_TARGET,
-    port: int = PORT
+    frame_interval: float = 0.5,  # Show each "new" frame for 0.5s
+    fps_target: int = 30,        # Send data 30 times per second
+    port: int = 1234
 ) -> None:
     """
-    Universal method to run LED animations.
-
-    Args:
-        frame_factory (callable): Function that generates a frame. Should return List[Tuple[int, int, int]].
-        frame_args (tuple, optional): Positional arguments for frame_factory.
-        frame_kwargs (dict, optional): Keyword arguments for frame_factory.
-        state (dict, optional): A dictionary to hold any state required by frame_factory.
-        frame_interval (float): Duration to display each frame (in seconds).
-        fps_target (int): Target frames per second.
-        port (int): UDP port to send packets to.
+    Universal method to run LED animations, generating a new frame
+    only every 'frame_interval' seconds, but still sending data at
+    'fps_target' times per second.
     """
-    # Ensure frame_args and frame_kwargs are not None
     frame_args = frame_args or ()
     frame_kwargs = frame_kwargs or {}
     state = state or {"enabled": False}
 
-    logging.info(f"Running animation with a interval of {frame_interval} seconds on {fps_target} FPS")
-    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {port}")
-    logging.info(
-        f"LEDs per controller: {LEDS_PER_CONTROLLER}, Total LEDs: {len(WLED_IPS) * LEDS_PER_CONTROLLER}"
-    )
+    logging.info(f"Running animation: new frame every {
+                 frame_interval:.2f}s, send at {fps_target} FPS")
+
+    # This will store the "latest" frame so we can re-send it.
+    previous_frame = []
+
+    # When it's time to get a new frame
+    next_frame_time = time.time()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
-            # Generate the current frame
-            try:
-                colors_for_all = frame_factory(
-                    *frame_args, **frame_kwargs, **state)
-            except TypeError as te:
-                logging.error(f"Error calling frame_factory: {te}")
-                break  # Exit the loop or handle appropriately
+            now = time.time()
+
+            # Time to get a NEW frame?
+            if now >= next_frame_time:
+                try:
+                    # Generate a new frame
+                    colors_for_all = frame_factory(
+                        *frame_args, **frame_kwargs, **state)
+                    previous_frame = colors_for_all  # Cache it
+                except TypeError as te:
+                    logging.error(f"Error calling frame_factory: {te}")
+                    break
+
+                # Set the next time to generate another new frame
+                next_frame_time = now + frame_interval
+
+                # Example: toggle some state only when generating new frame
+                if "enabled" in state:
+                    state["enabled"] = not state["enabled"]
+            else:
+                # Not yet time for a NEW frame, re-send the old one
+                colors_for_all = previous_frame
 
             # Build packets for all controllers
             packets = build_packets(colors_for_all)
@@ -97,11 +108,5 @@ def run_animation_interval(
             ]
             concurrent.futures.wait(futures)
 
-            # Sleep to maintain the target frame rate
-            frame_time = 1.0 / fps_target
-            time.sleep(max(frame_interval, frame_time))
-
-            # Toggle the boolean state for the next frame
-            if "enabled" in state:
-                state["enabled"] = not state["enabled"]
-            # Add additional state updates here if necessary
+            # Sleep to maintain the target FPS
+            time.sleep(1.0 / fps_target)
