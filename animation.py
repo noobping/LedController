@@ -51,9 +51,9 @@ def run_animation_interval(
     frame_args: Optional[tuple] = None,
     frame_kwargs: Optional[dict] = None,
     state: Optional[dict] = None,
-    frame_interval: float = 0.5,  # Show each "new" frame for 0.5s
-    fps_target: int = 30,        # Send data 30 times per second
-    port: int = 1234
+    frame_interval: float = FRAME_INTERVAL,  # Show each "new" frame for 0.5s
+    fps_target: int = FPS_TARGET,        # Send data 30 times per second
+    port: int = PORT
 ) -> None:
     """
     Universal method to run LED animations, generating a new frame
