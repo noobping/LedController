@@ -23,7 +23,7 @@ FPS_TARGET = 120
 PORT = 19446  # WLED’s real-time DRGB port
 
 
-def make_rainbow_wave(t, total_num_leds):
+def make_rainbow_frame(t, total_num_leds):
     """
     Returns a list of (R, G, B) tuples for total_num_leds.
     This will allow a continuous rainbow across multiple controllers.
@@ -38,7 +38,7 @@ def make_rainbow_wave(t, total_num_leds):
     return colors
 
 
-def make_christmas_wave(t, total_num_leds):
+def make_christmas_frame(t, total_num_leds):
     """
     Returns a list of (R, G, B) tuples for total_num_leds,
     creating an animated red-green pattern.
@@ -65,7 +65,7 @@ def make_christmas_wave(t, total_num_leds):
     return colors
 
 
-def make_random_wave(t, total_num_leds):
+def make_random_frame(t, total_num_leds):
     """
     Create an color array with random colors
     to each LED on every frame. This will cause flicker and chaos.
@@ -83,7 +83,7 @@ def make_random_wave(t, total_num_leds):
     return colors
 
 
-def make_custom_wave(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255), cycle_length=5.0):
+def make_custom_frame(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255), cycle_length=5.0):
     """
     Create a custom color pattern for your LEDs.
 
@@ -125,7 +125,7 @@ def make_custom_wave(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255), 
     return colors
 
 
-def make_static_color(t, total_num_leds, color=(255, 255, 255)):
+def make_colored_frame(t, total_num_leds, color=(255, 255, 255)):
     """
     Return a list of the same (R, G, B) color for all LEDs.
 
@@ -137,7 +137,7 @@ def make_static_color(t, total_num_leds, color=(255, 255, 255)):
     return [color] * total_num_leds
 
 
-def make_multistrip_static_colors(
+def make_multistrip_frame(
     total_strips,
     leds_per_strip,
     color_list
@@ -227,7 +227,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_multistrip_static_colors(
+            colors_for_all = make_multistrip_frame(
                 total_strips,
                 leds_per_strip,
                 color_per_strip
