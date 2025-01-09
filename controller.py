@@ -293,24 +293,16 @@ def send_packet(ip: str, port: int, packet: bytes) -> None:
 
 
 def main():
-    frame_interval = 1.0 / FPS_TARGET
-
-    # Variables for FPS measurement
-    frames_sent = 0
-    start_time = time.time()
-
-    t = 0.0
-
-    # Calculate total number of LEDs across all controllers
-    total_strips = len(WLED_IPS)
-    leds_per_strip = LEDS_PER_CONTROLLER
-    total_leds = total_strips * leds_per_strip
+    frame_interval = 1.0 / FPS_TARGET # Time between frames in seconds
+    frames_sent = 0 # Number of frames sent in the last second
+    start_time = time.time() # Time in seconds
+    t = 0.0 # Time in seconds
 
     logging.info("Starting WLED parallel sender...")
     logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}")
     logging.info(
         f"LEDs per controller: {
-            LEDS_PER_CONTROLLER}, Total LEDs: {total_leds}"
+            LEDS_PER_CONTROLLER}, Total LEDs: {TOTAL_LEDS}"
     )
 
     # Define the colors for each strip
