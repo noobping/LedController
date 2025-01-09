@@ -92,6 +92,15 @@ def main():
 
             # 1) Create one large color array for the ENTIRE 400-LED strip
             colors_for_all = make_rainbow_frame(t)
+            # colors_for_all = [
+            #     (255, 0, 0),  # Red
+            #     (0, 255, 0),  # Green
+            #     (0, 0, 255),  # Blue
+            #     (255, 255, 0),  # Yellow
+            #     (255, 0, 255),  # Magenta
+            #     (0, 255, 255),  # Cyan
+            #     (255, 255, 255),  # White
+            # ]
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
