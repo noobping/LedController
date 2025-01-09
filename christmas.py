@@ -43,8 +43,8 @@ if __name__ == "__main__":
         frame_factory=make_christmas_frame,
         frame_args=(),             # No positional arguments needed
         frame_kwargs={},           # No keyword arguments needed
-        state={"enabled": True},   # Initial state
-        frame_interval=FRAME_INTERVAL,
-        fps_target=FPS_TARGET,
+        state={"enabled": False},   # Initial state
+        frame_interval=5,
+        fps_target=0.5,
         port=PORT
     )

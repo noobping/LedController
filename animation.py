@@ -2,7 +2,7 @@ import logging
 import socket
 import time
 import concurrent.futures
-from typing import List, Tuple, Callable, Optional, Any
+from typing import List, Tuple, Callable, Optional
 
 from settings import FPS_TARGET, FRAME_INTERVAL, LEDS_PER_CONTROLLER, PORT, WLED_IPS
 
@@ -98,7 +98,8 @@ def run_animation_interval(
             concurrent.futures.wait(futures)
 
             # Sleep to maintain the target frame rate
-            time.sleep(1.0 / fps_target)
+            frame_time = 1.0 / fps_target
+            time.sleep(max(frame_interval, frame_time))
 
             # Toggle the boolean state for the next frame
             if "enabled" in state:
