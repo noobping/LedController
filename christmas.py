@@ -65,21 +65,6 @@ def build_packet(colors):
     for r, g, b in colors:
         packet += bytes([r, g, b])
     return packet
-    """
-    Test sending DNRGB packets to all controllers with all LEDs set to red.
-    """
-    test_color = (255, 0, 0)  # Red
-    colors_for_all = make_colored_frame(test_color)
-
-    try:
-        packets = build_packets(colors_for_all)
-    except ValueError as ve:
-        logging.error(f"Error building packets: {ve}")
-        return
-
-    for ip, packet in packets:
-        send_packet(ip, PORT, packet)
-        logging.info(f"Test packet sent to {ip}:{PORT}")
 
 
 def send_packet(ip: str, port: int, packet: bytes) -> None:
