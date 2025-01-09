@@ -4,32 +4,38 @@ import math
 import concurrent.futures
 import logging
 import random
+from typing import List, Tuple
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 
+# Constants
 WLED_IPS = [
-    "192.168.107.122",  # Index 0 -> Top left (Lucrasoft)
-    "192.168.107.123",  # Index 1 -> Top right (DutchGrit)
-    "192.168.107.120",  # Index 2 -> Bottom right (Technical Stuff)
+    "192.168.107.122",  # Index 0 -> Top right (Kantoor Lucas)
+    "192.168.107.123",  # Index 1 -> Top left (DutchGrit)
+    "192.168.107.120",  # Index 2 -> Bottom right (3D Printer)
     "192.168.107.121",  # Index 3 -> Bottom left (Finance)
 ]
 
-# Each controller has 100 LEDs in DRGB
-NUM_LEDS_PER_CONTROLLER = 100
+WINDOWS_PER_CONTROLLER = 5
+LEDS_PER_CONTROLLER = 100
+# 20 LEDs per window
+LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20 LEDs per window
+WLED_CONTROLLERS = len(WLED_IPS)  # 4 controllers
+TOTAL_LEDS = LEDS_PER_CONTROLLER * WLED_CONTROLLERS  # 400 LEDs
 BYTES_PER_LED = 3  # R, G, B
 FPS_TARGET = 120
-PORT = 19446  # WLED’s real-time DRGB port
+PORT = 19446  # WLED’s real-time port
 
 
-def make_rainbow_frame(t, total_num_leds):
+def make_rainbow_frame(t: float) -> List[Tuple[int, int, int]]:
     """
-    Returns a list of (R, G, B) tuples for total_num_leds.
+    Returns a list of (R, G, B) tuples for TOTAL_LEDS.
     This will allow a continuous rainbow across multiple controllers.
     """
     colors = []
-    for i in range(total_num_leds):
+    for i in range(TOTAL_LEDS):
         # Adjust the 0.06 “speed” factor as desired
         r = int((math.sin(t + i * 0.06) + 1) * 127)
         g = int((math.sin(t + i * 0.06 + 2 * math.pi / 3) + 1) * 127)
@@ -38,22 +44,21 @@ def make_rainbow_frame(t, total_num_leds):
     return colors
 
 
-def make_christmas_frame(t, total_num_leds):
+def make_christmas_frame(offset: int) -> List[Tuple[int, int, int]]:
     """
-    Returns a list of (R, G, B) tuples for total_num_leds,
+    Returns a list of (R, G, B) tuples for TOTAL_LEDS,
     creating an animated red-green pattern.
 
     :param t: The time in seconds since the animation started.
-    :param total_num_leds: The total number of LEDs to color.
     :return: A list of (R, G, B) tuples.
     """
 
     # This "offset" shifts every second (or so) to animate the pattern
     # Increase or decrease the multiplier (2) for a faster/slower shift
-    offset = int(t * 2)
+    offset = int(offset * 2)
     colors = []
 
-    for i in range(total_num_leds):
+    for i in range(TOTAL_LEDS):
         # Decide whether this LED is red or green by looking at (i + offset)
         if (i + offset) % 2 == 0:
             # Red
@@ -65,17 +70,16 @@ def make_christmas_frame(t, total_num_leds):
     return colors
 
 
-def make_random_frame(t, total_num_leds):
+def make_random_frame() -> List[Tuple[int, int, int]]:
     """
     Create an color array with random colors
     to each LED on every frame. This will cause flicker and chaos.
 
     :param t: Current time in seconds (unused, but included for consistency).
-    :param total_num_leds: Total number of LEDs to color.
     :return: A list of (R, G, B) tuples with random colors.
     """
     colors = []
-    for _ in range(total_num_leds):
+    for _ in range(TOTAL_LEDS):
         r = random.randint(0, 255)
         g = random.randint(0, 255)
         b = random.randint(0, 255)
@@ -83,7 +87,12 @@ def make_random_frame(t, total_num_leds):
     return colors
 
 
-def make_custom_frame(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255), cycle_length=5.0):
+def make_custom_frame(
+    t: float,
+    color1: Tuple[int, int, int] = (255, 0, 0),
+    color2: Tuple[int, int, int] = (0, 0, 255),
+    cycle_length: float = 5.0
+) -> List[Tuple[int, int, int]]:
     """
     Create a custom color pattern for your LEDs.
 
@@ -92,7 +101,6 @@ def make_custom_frame(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255),
       2. Shift the blend over time, so it animates.
 
     :param t: Current time (seconds) since the animation started.
-    :param total_num_leds: Total number of LEDs to color.
     :param color1: A tuple (R, G, B) for the first color.
     :param color2: A tuple (R, G, B) for the second color.
     :param cycle_length: How many seconds it takes to “complete” one full shift.
@@ -109,11 +117,11 @@ def make_custom_frame(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255),
     ratio = (math.sin((2 * math.pi / cycle_length) * t) + 1) / 2
 
     colors = []
-    for i in range(total_num_leds):
+    for i in range(TOTAL_LEDS):
         # For each LED, let's also adjust the ratio slightly by i’s position,
         # so that color transitions from one end of the strip to the other
         # (You can remove or modify this logic if you want a uniform effect)
-        local_ratio = (ratio + i / total_num_leds) % 1.0
+        local_ratio = (ratio + i / TOTAL_LEDS) % 1.0
 
         # Blend each channel independently
         r = int(r1 * (1.0 - local_ratio) + r2 * local_ratio)
@@ -125,49 +133,60 @@ def make_custom_frame(t, total_num_leds, color1=(255, 0, 0), color2=(0, 0, 255),
     return colors
 
 
-def make_colored_frame(t, total_num_leds, color=(255, 255, 255)):
+def make_colored_frame(color: Tuple[int, int, int] = (255, 255, 255)) -> List[Tuple[int, int, int]]:
     """
     Return a list of the same (R, G, B) color for all LEDs.
 
-    :param t: Current time (seconds) since animation start (unused here).
-    :param total_num_leds: The total number of LEDs to color.
     :param color: A tuple (R, G, B) specifying the static color.
     :return: A list of (R, G, B) tuples, all the same.
     """
-    return [color] * total_num_leds
+    return [color] * TOTAL_LEDS
 
 
 def make_multistrip_frame(
-    total_strips,
-    leds_per_strip,
-    color_list
-):
+    color_list: List[Tuple[int, int, int]],
+) -> List[Tuple[int, int, int]]:
     """
-    Returns a color array for a multi-strip setup, 
-    where each strip is assigned a single static color
-    from 'color_list'.
+    Assign a static color to each strip in a multi-strip setup.
 
-    :param total_strips: Number of strips (controllers).
-    :param leds_per_strip: Number of LEDs in each strip.
-    :param color_list: A list of (R, G, B) tuples. 
-                       Must have exactly 'total_strips' items.
+    Args:
+        color_list (List[Tuple[int, int, int]]): List of colors for each strip.
 
-    :return: A list of (R, G, B) tuples whose length is 
-             total_strips * leds_per_strip.
+    Raises:
+        ValueError: If the length of color_list doesn't match NUM_WLED_CONTROLLERS.
+
+    Returns:
+        List[Tuple[int, int, int]]: Combined list of (R, G, B) tuples for all strips.
     """
-    if len(color_list) != total_strips:
+    if len(color_list) != WLED_CONTROLLERS:
         raise ValueError(
-            f"Expected {total_strips} colors, got {len(color_list)}"
+            f"Expected {WLED_CONTROLLERS} colors, got {len(color_list)}"
         )
 
     colors_for_all = []
-    for i in range(total_strips):
-        # The static color for strip i
-        strip_color = color_list[i]
-        # Fill this strip's portion with that color
-        for _ in range(leds_per_strip):
-            colors_for_all.append(strip_color)
+    for strip_color in color_list:
+        colors_for_all.extend([strip_color] * LEDS_PER_CONTROLLER)
 
+    return colors_for_all
+
+
+def make_manual_frame(
+    color_config: List[List[Tuple[int, int, int]]]
+) -> List[Tuple[int, int, int]]:
+    """
+    Manually assign colors to each LED on each controller.
+
+    Args:
+        color_config (List[List[Tuple[int, int, int]]]): 
+            2D list where color_config[controller_idx][window_idx] is (R, G, B).
+
+    Returns:
+        List[Tuple[int, int, int]]: Combined list of (R, G, B) tuples for all controllers.
+    """
+    colors_for_all = []
+    for controller_idx, controller_windows in enumerate(color_config):
+        for window_idx, window_color in enumerate(controller_windows):
+            colors_for_all.extend([window_color] * LEDS_PER_WINDOW)
     return colors_for_all
 
 
@@ -179,6 +198,81 @@ def build_packet(colors):
     for r, g, b in colors:
         packet += bytes([r, g, b])
     return packet
+
+
+def build_packets(colors_for_all: List[Tuple[int, int, int]]) -> List[Tuple[str, bytes]]:
+    """
+    Construct DNRGB packets for each WLED controller from the combined colors list.
+    DNRGB format:
+      Byte 0 = 4  (DNRGB protocol)
+      Bytes 1-2 = Start index (big endian)
+      Bytes 3+ = [R, G, B] x LED_count
+
+    Args:
+        colors_for_all (List[Tuple[int, int, int]]): Combined list of colors for all controllers.
+
+    Returns:
+        List[Tuple[str, bytes]]: List of tuples containing IP and packet bytes for each controller.
+    """
+    # Ensure each controller has exactly LEDS_PER_CONTROLLER
+    expected_len = LEDS_PER_CONTROLLER * WLED_CONTROLLERS
+    if len(colors_for_all) != expected_len:
+        raise ValueError(
+            f"colors_for_all length {len(colors_for_all)} does not match expected {
+                expected_len} LEDs."
+        )
+
+    packets = []
+    for idx, ip in enumerate(WLED_IPS):
+        start_idx = 0
+        while start_idx < LEDS_PER_CONTROLLER:
+            # Define maximum LEDs per DNRGB packet (use 490 to be safe)
+            max_leds_per_packet = 490
+            remaining_leds = LEDS_PER_CONTROLLER - start_idx
+            leds_in_this_packet = min(max_leds_per_packet, remaining_leds)
+
+            # Calculate the absolute start index for this packet
+            absolute_start_idx = idx * LEDS_PER_CONTROLLER + start_idx
+
+            # Extract the subset of colors for this packet
+            end_idx = start_idx + leds_in_this_packet
+            controller_colors = colors_for_all[idx * LEDS_PER_CONTROLLER +
+                                               start_idx: idx * LEDS_PER_CONTROLLER + end_idx]
+
+            # Create the packet
+            packet = bytearray()
+            packet.append(4)  # Byte 0 = 4 -> DNRGB protocol
+            packet += (absolute_start_idx).to_bytes(2,
+                                                    byteorder='big')  # Bytes 1-2 = Start index
+
+            # Append RGB data
+            for (r, g, b) in controller_colors:
+                packet += bytes([r, g, b])
+
+            packets.append((ip, bytes(packet)))
+
+            # Increment the start index
+            start_idx += leds_in_this_packet
+
+    return packets
+
+
+def test_packet():
+    """
+    Test sending DNRGB packets to all controllers with all LEDs set to red.
+    """
+    test_color = (255, 0, 0)  # Red
+    colors_for_all = make_colored_frame(test_color)
+
+    try:
+        packets = build_packets(colors_for_all)
+    except ValueError as ve:
+        logging.error(f"Error building packets: {ve}")
+        return
+
+    for ip, packet in packets:
+        send_packet(ip, PORT, packet)
+        logging.info(f"Test packet sent to {ip}:{PORT}")
 
 
 def send_packet(ip: str, port: int, packet: bytes) -> None:
@@ -209,40 +303,73 @@ def main():
 
     # Calculate total number of LEDs across all controllers
     total_strips = len(WLED_IPS)
-    leds_per_strip = NUM_LEDS_PER_CONTROLLER
+    leds_per_strip = LEDS_PER_CONTROLLER
     total_leds = total_strips * leds_per_strip
 
     logging.info("Starting WLED parallel sender...")
     logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}")
     logging.info(
         f"LEDs per controller: {
-            NUM_LEDS_PER_CONTROLLER}, Total LEDs: {total_leds}"
+            LEDS_PER_CONTROLLER}, Total LEDs: {total_leds}"
     )
 
     # Define the colors for each strip
     color_per_strip = [
-        (0, 51, 102),     # Lucrasoft - Navy Blue
+        (0, 51, 102),     # Kantoor Lucas - Navy Blue
         (255, 165, 0),    # DutchGrit - Orange
-        (112, 128, 144),  # Technical Stuff - Slate Gray
-        (255, 215, 0)     # Finance - Gold
+        (112, 128, 144),  # 3D Printer - Slate Gray
+        (0, 0, 255)     # Finance - Blue
+    ]
+
+    # Define the colors for each window on each controller
+    # color_per_window_per_controller[controller_index][window_index] -> (R, G, B)
+    color_per_window_per_controller = [
+        # Top right (Kantoor Lucas)
+        [
+            (0, 51, 102),    # Window 0
+            (0, 51, 102),    # Window 1
+            (0, 51, 102),    # Window 2
+            (0, 51, 102),    # Window 3
+            (0, 51, 102),    # Window 4
+        ],
+        # Top left (DutchGrit)
+        [
+            (255, 165, 0),   # Window 0
+            (255, 165, 0),   # Window 1
+            (255, 165, 0),   # Window 2
+            (255, 165, 0),   # Window 3
+            (255, 165, 0),   # Window 4
+        ],
+        # Bottom right (3D Printer)
+        [
+            (112, 128, 144),  # Window 0
+            (112, 128, 144),  # Window 1
+            (112, 128, 144),  # Window 2
+            (112, 128, 144),  # Window 3
+            (112, 128, 144),  # Window 4
+        ],
+        # Bottom left (Finance)
+        [
+            (0, 0, 255),   # Window 0
+            (0, 0, 255),   # Window 1
+            (0, 0, 255),   # Window 2
+            (0, 0, 255),   # Window 3
+            (0, 0, 255),   # Window 4
+        ],
     ]
 
     # Use a ThreadPoolExecutor to send packets “in parallel”
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
         while True:
             # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_multistrip_frame(
-                total_strips,
-                leds_per_strip,
-                color_per_strip
-            )
+            colors_for_all = make_multistrip_frame(color_per_strip)
 
             # 2) Build and send a separate packet for each controller's slice
             futures = []
             for idx, ip in enumerate(WLED_IPS):
                 # Slice out this controller's 100 LEDs
-                start_idx = idx * NUM_LEDS_PER_CONTROLLER
-                end_idx = start_idx + NUM_LEDS_PER_CONTROLLER
+                start_idx = idx * LEDS_PER_CONTROLLER
+                end_idx = start_idx + LEDS_PER_CONTROLLER
                 controller_colors = colors_for_all[start_idx:end_idx]
 
                 # Build the packet for this subset and send
