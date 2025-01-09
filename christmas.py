@@ -24,6 +24,7 @@ WLED_CONTROLLERS = len(WLED_IPS)  # 4 controllers
 TOTAL_LEDS = LEDS_PER_CONTROLLER * WLED_CONTROLLERS  # 400 LEDs
 BYTES_PER_LED = 3  # R, G, B
 FRAME_INTERVAL = 5  # 5 seconds per frame
+FPS_TARGET = 5  # Frames per second
 PORT = 19446  # WLED’s real-time port
 
 
@@ -37,7 +38,8 @@ def make_christmas_frame(start_with_red: bool = True) -> List[Tuple[int, int, in
     Returns:
         List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
     """
-    logging.debug(f"Creating Christmas frame that starts with {'red' if start_with_red else 'green'}")
+    logging.debug(f"Creating Christmas frame that starts with {
+                  'red' if start_with_red else 'green'}")
 
     colors = []
     for i in range(TOTAL_LEDS):
@@ -108,29 +110,33 @@ def main():
     t: bool = False
 
     # Use a ThreadPoolExecutor to send packets “in parallel”
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
-        while True:
-            # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_christmas_frame(t)
+    while True:
+        # 1) Choose color array (t will flip between red→green)
+        colors_for_all = make_christmas_frame(t)
 
-            # 2) Build and send a separate packet for each controller's slice
-            futures = []
-            for idx, ip in enumerate(WLED_IPS):
-                # Slice out this controller's 100 LEDs
-                start_idx = idx * LEDS_PER_CONTROLLER
-                end_idx = start_idx + LEDS_PER_CONTROLLER
-                controller_colors = colors_for_all[start_idx:end_idx]
+        # 2) Build the packets for each controller
+        packets = []
+        for idx, ip in enumerate(WLED_IPS):
+            start_idx = idx * LEDS_PER_CONTROLLER
+            end_idx = start_idx + LEDS_PER_CONTROLLER
+            controller_colors = colors_for_all[start_idx:end_idx]
+            packet = build_packet(controller_colors)
+            packets.append((ip, packet))
 
-                # Build the packet for this subset and send
-                packet = build_packet(controller_colors)
-                futures.append(executor.submit(send_packet, ip, PORT, packet))
+        # 3) Send the same color repeatedly for the whole 5 seconds
+        start_time = time.time()
+        while time.time() - start_time < FRAME_INTERVAL:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
+                futures = [executor.submit(
+                    send_packet, ip, PORT, packet) for ip, packet in packets]
+                concurrent.futures.wait(futures)
 
-            # 3) Wait for all packets to be sent
-            concurrent.futures.wait(futures)
+            # Sleep just enough to keep from flooding the network,
+            # but ensure we don't exceed WLED’s timeout
+            time.sleep(1.0 / FPS_TARGET)
 
-            # 4) Sleep to maintain target FPS and increment time
-            time.sleep(FRAME_INTERVAL)
-            t = not t
+        # Finally toggle t for next color
+        t = not t
 
 
 if __name__ == "__main__":
