@@ -4,7 +4,7 @@ import time
 import concurrent.futures
 from typing import List, Tuple, Callable, Optional
 
-from settings import FPS_TARGET, FRAME_INTERVAL, LEDS_PER_CONTROLLER, PORT, WLED_IPS
+from settings import FPS_TARGET, FRAME_INTERVAL, LEDS_PER_CONTROLLER, PORT, WLED_CONTROLLERS, WLED_IPS
 
 
 def send_packets(ip: str, port: int, packet: bytes) -> None:
@@ -51,8 +51,8 @@ def run_animation_interval(
     frame_args: Optional[tuple] = None,
     frame_kwargs: Optional[dict] = None,
     state: Optional[dict] = None,
-    frame_interval: float = FRAME_INTERVAL,  # Show each "new" frame for 0.5s
-    fps_target: int = FPS_TARGET,        # Send data 30 times per second
+    frame_interval: float = FRAME_INTERVAL,
+    fps_target: int = FPS_TARGET,
     port: int = PORT
 ) -> None:
     """
@@ -62,7 +62,7 @@ def run_animation_interval(
     """
     frame_args = frame_args or ()
     frame_kwargs = frame_kwargs or {}
-    state = state or {"enabled": False}
+    state = state or {}
 
     logging.info(f"Running animation: new frame every {
                  frame_interval:.2f}s, send at {fps_target} FPS")
@@ -73,7 +73,7 @@ def run_animation_interval(
     # When it's time to get a new frame
     next_frame_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=WLED_CONTROLLERS) as executor:
         while True:
             now = time.time()
 
@@ -110,3 +110,58 @@ def run_animation_interval(
 
             # Sleep to maintain the target FPS
             time.sleep(1.0 / fps_target)
+
+
+def run_animation_frames(
+    frame_factory: Callable[..., List[Tuple[int, int, int]]],
+    frame_args: Optional[tuple] = None,
+    frame_kwargs: Optional[dict] = None,
+    fps_target: int = FPS_TARGET,
+    port: int = PORT
+) -> None:
+    frame_interval = 1.0 / fps_target
+    frames_sent = 0
+    start_time = time.time()
+    fps_counter = 0.0
+
+    logging.info("Starting WLED parallel sender with DNRGB protocol...")
+    logging.info(
+        f"Targeting IPs: {WLED_IPS}, Port: {port}, FPS: {fps_target}"
+    )
+
+    # Use a ThreadPoolExecutor to send packets “in parallel”
+    # Set max_workers to the total number of packets per frame to avoid bottleneck
+    # For 4 controllers with 2 packets each: 8 workers
+    with concurrent.futures.ThreadPoolExecutor(max_workers=WLED_CONTROLLERS * 2) as executor:
+        while True:
+            colors_for_all = frame_factory(
+                *frame_args, **frame_kwargs, fps_counter=fps_counter)
+
+            # Build packets for all controllers
+            try:
+                # Build packets for all controllers
+                packets = build_packets(colors_for_all)
+            except ValueError as ve:
+                logging.error(f"Error building packets: {ve}")
+                break
+
+            # Send all packets concurrently to all controllers
+            [
+                executor.submit(send_packets, ip, port, packet)
+                for ip, packet in packets
+            ]
+
+            frames_sent += 1
+
+            # Calculate and log FPS every second
+            now = time.time()
+            elapsed = now - start_time
+            if elapsed >= 1.0:
+                fps = frames_sent / elapsed
+                logging.info(f"Measured FPS: {fps:.2f}")
+                frames_sent = 0
+                start_time = now
+
+            # Maintain target FPS and increment time
+            time.sleep(frame_interval)
+            fps_counter += frame_interval
