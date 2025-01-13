@@ -4,10 +4,6 @@ from typing import List, Tuple
 
 from settings import TOTAL_LEDS
 
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s")
-
 
 def make_rainbow_frame(fps_counter: float) -> List[Tuple[int, int, int]]:
     """
@@ -31,6 +27,8 @@ def make_rainbow_frame(fps_counter: float) -> List[Tuple[int, int, int]]:
 
 if __name__ == "__main__":
     from animation import run_animation_frames
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s")
 
     run_animation_frames(
         frame_factory=make_rainbow_frame,

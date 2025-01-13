@@ -3,10 +3,6 @@ from typing import List, Tuple
 
 from settings import LEDS_PER_WINDOW, TOTAL_LEDS
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG,
-                    format="%(asctime)s %(levelname)s %(message)s")
-
 
 def make_christmas_frame(enabled: bool = True, **state) -> List[Tuple[int, int, int]]:
     """
@@ -19,7 +15,8 @@ def make_christmas_frame(enabled: bool = True, **state) -> List[Tuple[int, int, 
     Returns:
         List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
     """
-    logging.debug(f"Creating Christmas frame that starts with {'red' if enabled else 'green'}")
+    logging.debug(f"Creating Christmas frame that starts with {
+                  'red' if enabled else 'green'}")
 
     colors = []
     for i in range(TOTAL_LEDS):
@@ -39,6 +36,9 @@ def make_christmas_frame(enabled: bool = True, **state) -> List[Tuple[int, int, 
 
 if __name__ == "__main__":
     from animation import run_animation_interval
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(asctime)s %(levelname)s %(message)s")
+
     run_animation_interval(
         frame_factory=make_christmas_frame,
         frame_args=(),             # No positional arguments needed
