@@ -3,8 +3,8 @@ import time
 import logging
 import concurrent.futures
 from typing import List, Tuple
-import cv2 # OpenCV for video processing
-import numpy  # For numerical operations
+import cv2  # OpenCV for video processing
+import numpy as np  # For numerical operations
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
@@ -99,7 +99,6 @@ def play_video(video_path: str) -> None:
 
     # Determine the layout of windows (e.g., 4 controllers x 5 windows)
     num_windows = TOTAL_CONTROLLERS * WINDOWS_PER_CONTROLLER  # 20 windows
-    window_colors = [(0, 0, 0)] * num_windows
 
     # Define the grid size for window mapping (e.g., 4 rows x 5 columns)
     grid_rows = 4
@@ -112,16 +111,45 @@ def play_video(video_path: str) -> None:
             logging.info("Video playback finished.")
             break
 
-        # Resize the frame to match the grid size
-        resized_frame = cv2.resize(frame, (grid_cols, grid_rows), interpolation=cv2.INTER_AREA)
+        # Check the number of channels in the frame
+        if len(frame.shape) == 2:
+            # Grayscale image, convert to RGB
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            logging.debug("Converted grayscale frame to RGB.")
+        elif frame.shape[2] == 4:
+            # Frame with alpha channel, remove it
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
+            logging.debug("Converted BGRA frame to RGB.")
+        elif frame.shape[2] == 3:
+            # BGR to RGB
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            logging.debug("Converted BGR frame to RGB.")
+        else:
+            logging.error(f"Unexpected number of channels: {frame.shape[2]}")
+            continue  # Skip this frame
 
-        # Convert BGR (OpenCV default) to RGB
-        resized_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
+        # Resize the frame to match the grid size
+        resized_frame = cv2.resize(
+            frame, (grid_cols, grid_rows), interpolation=cv2.INTER_AREA)
+        logging.debug(f"Resized frame shape: {resized_frame.shape}")
+
+        # Ensure resized_frame has shape (grid_rows, grid_cols, 3)
+        if resized_frame.shape != (grid_rows, grid_cols, 3):
+            logging.error(f"Resized frame has unexpected shape: {
+                          resized_frame.shape}")
+            continue  # Skip this frame
 
         # Extract colors for each window
-        # Reshape to (num_windows, 3) where each row is an RGB tuple
+        # Shape: (num_windows, 3)
         reshaped_frame = resized_frame.reshape(-1, 3)
-        window_colors = [tuple(pixel) for pixel in reshaped_frame]
+        window_colors = [tuple(pixel.tolist()) for pixel in reshaped_frame]
+        logging.info(f"Window colors: {window_colors}")
+
+        # Validate window_colors length
+        if len(window_colors) != num_windows:
+            logging.error(f"Expected {num_windows} window colors, got {
+                          len(window_colors)}")
+            continue  # Skip this frame
 
         # Build the full LED color list
         full_colors = []
