@@ -8,7 +8,6 @@ import numpy as np  # For numerical operations
 import argparse
 import asyncio
 import keyboard  # Ensure you have installed 'keyboard' package
-import threading
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
