@@ -15,8 +15,8 @@ logging.basicConfig(level=logging.INFO,
 
 # The IPs of your four WLED controllers
 WLED_IPS = [
-    "192.168.107.123",  # Index 1 -> Top Left
-    "192.168.107.122",  # Index 0 -> Top Right
+    "192.168.107.123",  # Index 0 -> Top Left
+    "192.168.107.122",  # Index 1 -> Top Right
     "192.168.107.120",  # Index 2 -> Bottom Right
     "192.168.107.121",  # Index 3 -> Bottom Left
 ]
