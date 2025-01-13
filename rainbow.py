@@ -26,11 +26,11 @@ def make_rainbow_frame(fps_counter: float) -> List[Tuple[int, int, int]]:
 
 
 if __name__ == "__main__":
-    from animation import run_animation_frames
+    from animation import run_animation
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
 
-    run_animation_frames(
+    run_animation(
         frame_factory=make_rainbow_frame,
         frame_args=(),   # No positional arguments needed
         frame_kwargs={},  # No keyword arguments needed

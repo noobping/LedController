@@ -71,11 +71,11 @@ def make_custom_frame(
 
 if __name__ == "__main__":
     import logging
-    from animation import run_animation_frames
+    from animation import run_animation
     logging.basicConfig(level=logging.WARNING,
                         format="%(asctime)s %(levelname)s %(message)s")
 
-    run_animation_frames(
+    run_animation(
         frame_factory=make_custom_frame,
         frame_args=(),  # No positional arguments needed
         frame_kwargs={"color1": (255, 0, 0), "color2": (
