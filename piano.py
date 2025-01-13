@@ -49,6 +49,8 @@ def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes) for the entire LED array.
     """
+    colors = colors[::-1]  # Reverse the order of the colors
+
     packet = bytearray()
     for (r, g, b) in colors:
         packet += bytes([r, g, b])
@@ -93,7 +95,8 @@ def get_color_frame_for_key(key: str) -> List[Tuple[int, int, int]]:
         new_colors[i] = (255, 0, 0)
 
     # Count the number of red and black LEDs
-    logging.info(f"Red LEDs: {new_colors.count((255, 0, 0))} and Black LEDs: {new_colors.count((0, 0, 0))}")
+    logging.info(f"Red LEDs: {new_colors.count((255, 0, 0))} and Black LEDs: {
+                 new_colors.count((0, 0, 0))}")
     return new_colors
 
 
@@ -108,7 +111,8 @@ def send_frames_in_parallel(colors: List[Tuple[int, int, int]]):
             start_idx = idx * LEDS_PER_CONTROLLER
             end_idx = start_idx + LEDS_PER_CONTROLLER
             controller_slice = colors[start_idx:end_idx]
-            logging.debug(f"Sending to {len(controller_slice)} LEDs at {ip}: {controller_slice}")
+            logging.debug(f"Sending to {len(controller_slice)} LEDs at {
+                          ip}: {controller_slice}")
 
             # Build and send this subset
             packet = build_packet(controller_slice)
