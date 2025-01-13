@@ -1,3 +1,10 @@
 {
-    "image": "mcr.microsoft.com/devcontainers/python"
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "settings": {},
+    "extensions": [
+        "ms-python.python"
+    ],
+    "postCreateCommand": "pip install opencv-python numpy"
 }
