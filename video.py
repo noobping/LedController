@@ -78,7 +78,7 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
             futures.append(executor.submit(send_packet, ip, PORT, packet))
 
 
-def play_video(video_path: str) -> None:
+def play_video(video_path: str, repeat: bool = False) -> None:
     """
     Play a video by mapping its frames to the LED windows.
 
@@ -109,6 +109,10 @@ def play_video(video_path: str) -> None:
         ret, frame = cap.read()
         if not ret:
             logging.info("Video playback finished.")
+            if repeat:
+                logging.info("Replaying video...")
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
             break
 
         # Check the number of channels in the frame
