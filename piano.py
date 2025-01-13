@@ -105,14 +105,14 @@ def get_color_frame_for_key(key: str) -> List[Tuple[int, int, int]]:
     absolute_start = controller_idx * LEDS_PER_CONTROLLER + start_led
     absolute_end = controller_idx * LEDS_PER_CONTROLLER + end_led
 
-    # Set those 20 LEDs to red
+    # Set those 20 LEDs to white
     new_colors = list(colors)
     for i in range(absolute_start, absolute_end):
-        logging.debug(f"Setting LED {i} to red")
-        new_colors[i] = (255, 0, 0)
+        logging.debug(f"Setting LED {i} to white")
+        new_colors[i] = (255, 255, 255)
 
-    # Count the number of red and black LEDs
-    logging.info(f"Red LEDs: {new_colors.count((255, 0, 0))} and Black LEDs: {
+    # Count the number of white and black LEDs
+    logging.info(f"Red LEDs: {new_colors.count((255, 255, 255))} and Black LEDs: {
                  new_colors.count((0, 0, 0))}")
     return new_colors
 
