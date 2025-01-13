@@ -147,9 +147,7 @@ def play_video(video_path: str) -> None:
 
 def main():
     logging.info("Starting WLED controller with video playback.")
-
-    # Prompt user for video file path
-    video_path = input("Enter the path to the video file: ")
+    video_path = "video.mp4"
     logging.info(f"Starting video playback: {video_path}")
     play_video(video_path)
     logging.info("Video playback ended.")
