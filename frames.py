@@ -8,7 +8,8 @@ def make_random_frame() -> List[Tuple[int, int, int]]:
     Create an color array with random colors
     to each LED on every frame. This will cause flicker and chaos.
 
-    :return: A list of (R, G, B) tuples with random colors.
+    Returns:
+        A list of (R, G, B) tuples with random colors.
     """
     colors = []
     for _ in range(TOTAL_LEDS):
@@ -32,11 +33,14 @@ def make_custom_frame(
       1. Blend from color1 to color2 across the strip.
       2. Shift the blend over time, so it animates.
 
-    :param fps_counter: Current time (seconds) since the animation started.
-    :param color1: A tuple (R, G, B) for the first color.
-    :param color2: A tuple (R, G, B) for the second color.
-    :param cycle_length: How many seconds it takes to “complete” one full shift.
-    :return: A list of (R, G, B) tuples.
+    Args:
+        :param fps_counter: Current time (seconds) since the animation started.
+        :param color1: A tuple (R, G, B) for the first color.
+        :param color2: A tuple (R, G, B) for the second color.
+        :param cycle_length: How many seconds it takes to “complete” one full shift.
+
+    Returns:
+        A list of (R, G, B) tuples with a wave shifting between color1 and color2.
     """
     # Extract color channels for convenience
     r1, g1, b1 = color1
