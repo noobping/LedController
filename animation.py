@@ -59,6 +59,15 @@ def run_animation_interval(
     Universal method to run LED animations, generating a new frame
     only every 'frame_interval' seconds, but still sending data at
     'fps_target' times per second.
+
+    Args:
+        frame_factory (Callable[..., List[Tuple[int, int, int]]): A function that generates the frame.
+        frame_args (Optional[tuple], optional): Positional arguments to pass to the frame_factory. Defaults to None.
+        frame_kwargs (Optional[dict], optional): Keyword arguments to pass to the frame_factory. Defaults to None.
+        state (Optional[dict], optional): A dictionary to store state. Defaults to None.
+        frame_interval (float, optional): The time between frames in seconds. Defaults to FRAME_INTERVAL.
+        fps_target (int, optional): The target frames per second. Defaults to FPS_TARGET.
+        port (int, optional): The port number to send the packets to. Defaults to PORT.
     """
     frame_args = frame_args or ()
     frame_kwargs = frame_kwargs or {}
@@ -118,7 +127,18 @@ def run_animation_frames(
     frame_kwargs: Optional[dict] = None,
     fps_target: int = FPS_TARGET,
     port: int = PORT
-) -> None:
+ ) -> None:
+    """
+    Universal method to run LED animations, generating a new frame
+    every 1/FPS_TARGET seconds, and sending data at FPS_TARGET times per second.
+
+    Args:
+        frame_factory (Callable[..., List[Tuple[int, int, int]]): A function that generates the frame.
+        frame_args (Optional[tuple], optional): Positional arguments to pass to the frame_factory. Defaults to None.
+        frame_kwargs (Optional[dict], optional): Keyword arguments to pass to the frame_factory. Defaults to None.
+        fps_target (int, optional): The target frames per second. Defaults to FPS_TARGET.
+        port (int, optional): The port number to send the packets to. Defaults to PORT.
+    """
     frame_interval = 1.0 / fps_target
     frames_sent = 0
     start_time = time.time()
