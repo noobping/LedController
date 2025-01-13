@@ -127,7 +127,7 @@ def run_animation_frames(
     frame_kwargs: Optional[dict] = None,
     fps_target: int = FPS_TARGET,
     port: int = PORT
- ) -> None:
+) -> None:
     """
     Universal method to run LED animations, generating a new frame
     every 1/FPS_TARGET seconds, and sending data at FPS_TARGET times per second.
