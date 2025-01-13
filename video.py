@@ -119,7 +119,9 @@ def play_video(video_path: str) -> None:
         resized_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
 
         # Extract colors for each window
-        window_colors = [tuple(pixel) for pixel in resized_frame.flatten()]
+        # Reshape to (num_windows, 3) where each row is an RGB tuple
+        reshaped_frame = resized_frame.reshape(-1, 3)
+        window_colors = [tuple(pixel) for pixel in reshaped_frame]
 
         # Build the full LED color list
         full_colors = []
