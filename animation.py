@@ -121,7 +121,7 @@ def run_animation_interval(
             time.sleep(1.0 / fps_target)
 
 
-def run_animation_frames(
+def run_animation(
     frame_factory: Callable[..., List[Tuple[int, int, int]]],
     frame_args: Optional[tuple] = None,
     frame_kwargs: Optional[dict] = None,
