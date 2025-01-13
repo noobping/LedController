@@ -28,106 +28,32 @@ FPS_TARGET = 120  # Target frames per second
 PORT = 19446  # WLED’s real-time port
 
 
-def make_rainbow_frame(t: float) -> List[Tuple[int, int, int]]:
+def make_rainbow_frame(fps_counter: float) -> List[Tuple[int, int, int]]:
     """
-    Returns a list of (R, G, B) tuples for TOTAL_LEDS.
-    This will allow a continuous rainbow across multiple controllers.
+    Make a rainbow frame.
+
+    Args:
+        fps_counter (float): Current time (seconds) since the animation started.
+
+    Returns:
+        List[Tuple[int, int, int]]: A list of (R, G, B) tuples for all LEDs
     """
     colors = []
     for i in range(TOTAL_LEDS):
-        # Adjust the 0.06 “speed” factor as desired
-        r = int((math.sin(t + i * 0.06) + 1) * 127)
-        g = int((math.sin(t + i * 0.06 + 2 * math.pi / 3) + 1) * 127)
-        b = int((math.sin(t + i * 0.06 + 4 * math.pi / 3) + 1) * 127)
+        # The 0.06 is the “speed” factor
+        r = int((math.sin(fps_counter + i * 0.06) + 1) * 127)
+        g = int((math.sin(fps_counter + i * 0.06 + 2 * math.pi / 3) + 1) * 127)
+        b = int((math.sin(fps_counter + i * 0.06 + 4 * math.pi / 3) + 1) * 127)
         colors.append((r, g, b))
     return colors
 
 
-def build_packet(colors):
-    """
-    Builds the DRGB packet (no header, just RGB bytes).
-    """
-    packet = bytearray()
-    for r, g, b in colors:
-        packet += bytes([r, g, b])
-    return packet
-
-
-def send_packet(ip: str, port: int, packet: bytes) -> None:
-    """
-    Send a UDP packet to a specified WLED controller.
-
-    Args:
-        ip (str): IP address of the WLED controller.
-        port (int): Port number to send the packet to.
-        packet (bytes): The packet to send.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        try:
-            sock.sendto(packet, (ip, port))
-            logging.debug(f"Sent packet of {len(packet)} bytes to {ip}:{port}")
-        except Exception as e:
-            logging.error(f"Failed to send packet to {ip}:{port} - {e}")
-
-
-def main():
-    frame_interval = 1.0 / FPS_TARGET # Time between frames in seconds
-    frames_sent = 0 # Number of frames sent in the last second
-    start_time = time.time() # Time in seconds
-    t = 0.0 # Time in seconds
-
-    logging.info("Starting WLED parallel sender...")
-    logging.info(f"Targeting IPs: {WLED_IPS}, Port: {PORT}, FPS: {FPS_TARGET}")
-    logging.info(
-        f"LEDs per controller: {
-            LEDS_PER_CONTROLLER}, Total LEDs: {TOTAL_LEDS}"
-    )
-
-    # Use a ThreadPoolExecutor to send packets “in parallel”
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(WLED_IPS)) as executor:
-        while True:
-            # Calculate elapsed time
-            current_time = time.time()
-            elapsed_time = current_time - start_time
-
-            # 1) Create one large color array for the ENTIRE 400-LED strip
-            colors_for_all = make_rainbow_frame(t)
-            # colors_for_all = [
-            #     (255, 0, 0),  # Red
-            #     (0, 255, 0),  # Green
-            #     (0, 0, 255),  # Blue
-            #     (255, 255, 0),  # Yellow
-            #     (255, 0, 255),  # Magenta
-            #     (0, 255, 255),  # Cyan
-            #     (255, 255, 255),  # White
-            # ]
-
-            # 2) Build and send a separate packet for each controller's slice
-            futures = []
-            for idx, ip in enumerate(WLED_IPS):
-                # Slice out this controller's 100 LEDs
-                start_idx = idx * LEDS_PER_CONTROLLER
-                end_idx = start_idx + LEDS_PER_CONTROLLER
-                controller_colors = colors_for_all[start_idx:end_idx]
-
-                # Build the packet for this subset and send
-                packet = build_packet(controller_colors)
-                futures.append(executor.submit(send_packet, ip, PORT, packet))
-
-            frames_sent += 1
-
-            # 3) Calculate and print FPS every second
-            if elapsed_time >= 1.0:
-                fps = frames_sent / elapsed_time
-                logging.info(f"Measured FPS: {fps:.2f}")
-                # Reset counters
-                frames_sent = 0
-                start_time = current_time
-
-            # 4) Sleep to maintain target FPS and increment time
-            time.sleep(frame_interval)
-            t += frame_interval
-
-
 if __name__ == "__main__":
-    main()
+    from animation import run_animation_frames
+
+    run_animation_frames(
+        frame_factory=make_rainbow_frame,
+        frame_args=(),   # No positional arguments needed
+        frame_kwargs={},  # No keyword arguments needed
+        fps_target=120
+    )
