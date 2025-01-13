@@ -10,10 +10,6 @@ except ImportError:
     print("Please install the 'keyboard' package (pip install keyboard).")
     exit(1)
 
-# -----------------------------------------------------------------------------
-# CONFIGURATION
-# -----------------------------------------------------------------------------
-
 logging.basicConfig(level=logging.DEBUG,
                     format="%(asctime)s %(levelname)s %(message)s")
 
@@ -72,9 +68,11 @@ def get_color_frame_for_key(key: str) -> List[Tuple[int, int, int]]:
     Build a color array of length TOTAL_LEDS (400).
     All LEDs off (black) except the 20 LEDs corresponding to the pressed key.
     """
-    # Start all LEDs as black
+    # Start all LEDs off
+    logging.debug("Clearing all LEDs")
     colors = [(0, 0, 0)] * TOTAL_LEDS
 
+    logging.debug(f"Key pressed: {key}")
     if key not in KEY_TO_WINDOW:
         # Unmapped key => do nothing
         return colors
@@ -88,11 +86,14 @@ def get_color_frame_for_key(key: str) -> List[Tuple[int, int, int]]:
     absolute_start = controller_idx * LEDS_PER_CONTROLLER + start_led
     absolute_end = controller_idx * LEDS_PER_CONTROLLER + end_led
 
-    # Set those 20 LEDs to white
+    # Set those 20 LEDs to red
     new_colors = list(colors)
     for i in range(absolute_start, absolute_end):
-        new_colors[i] = (255, 255, 255)
+        logging.debug(f"Setting LED {i} to red")
+        new_colors[i] = (255, 0, 0)
 
+    # Count the number of red and black LEDs
+    logging.info(f"Red LEDs: {new_colors.count((255, 0, 0))} and Black LEDs: {new_colors.count((0, 0, 0))}")
     return new_colors
 
 
@@ -107,6 +108,7 @@ def send_frames_in_parallel(colors: List[Tuple[int, int, int]]):
             start_idx = idx * LEDS_PER_CONTROLLER
             end_idx = start_idx + LEDS_PER_CONTROLLER
             controller_slice = colors[start_idx:end_idx]
+            logging.debug(f"Sending to {ip}: {controller_slice}")
 
             # Build and send this subset
             packet = build_packet(controller_slice)
