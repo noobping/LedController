@@ -1,31 +1,12 @@
-import socket
-import time
 import math
-import concurrent.futures
 import logging
 from typing import List, Tuple
+
+from settings import TOTAL_LEDS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
-
-# Constants
-WLED_IPS = [
-    "192.168.107.122",  # Index 0 -> Top right (Kantoor Lucas)
-    "192.168.107.123",  # Index 1 -> Top left (DutchGrit)
-    "192.168.107.120",  # Index 2 -> Bottom right (3D Printer)
-    "192.168.107.121",  # Index 3 -> Bottom left (Finance)
-]
-
-WINDOWS_PER_CONTROLLER = 5
-LEDS_PER_CONTROLLER = 100
-# 20 LEDs per window
-LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20 LEDs per window
-WLED_CONTROLLERS = len(WLED_IPS)  # 4 controllers
-TOTAL_LEDS = LEDS_PER_CONTROLLER * WLED_CONTROLLERS  # 400 LEDs
-BYTES_PER_LED = 3  # R, G, B
-FPS_TARGET = 120  # Target frames per second
-PORT = 19446  # WLED’s real-time port
 
 
 def make_rainbow_frame(fps_counter: float) -> List[Tuple[int, int, int]]:
