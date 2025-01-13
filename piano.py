@@ -108,7 +108,7 @@ def send_frames_in_parallel(colors: List[Tuple[int, int, int]]):
             start_idx = idx * LEDS_PER_CONTROLLER
             end_idx = start_idx + LEDS_PER_CONTROLLER
             controller_slice = colors[start_idx:end_idx]
-            logging.debug(f"Sending to {ip}: {controller_slice}")
+            logging.debug(f"Sending to {len(controller_slice)} LEDs at {ip}: {controller_slice}")
 
             # Build and send this subset
             packet = build_packet(controller_slice)
