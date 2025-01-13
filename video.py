@@ -30,7 +30,8 @@ BYTES_PER_LED = 3       # R, G, B
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="WLED Controller with Video Playback")
+    parser = argparse.ArgumentParser(
+        description="WLED Controller with Video Playback")
     parser.add_argument(
         "--video",
         type=str,
@@ -74,26 +75,11 @@ def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     return packet
 
 
-def send_packet(ip: str, port: int, packet: bytes, retries: int = 3, delay: float = 0.5) -> None:
-    """
-    Send a UDP packet to a specified WLED controller with retry logic.
-
-    Args:
-        ip: The IP address of the WLED controller.
-        port: The port of the WLED controller.
-        packet: The DRGB packet to send.
-        retries: Number of retry attempts.
-        delay: Delay between retries in seconds.
-    """
-    for attempt in range(retries):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.sendto(packet, (ip, port))
-            return  # Success
-        except Exception as e:
-            logging.warning(f"Failed to send packet to {ip}:{port} on attempt {attempt + 1}/{retries}: {e}")
-            time.sleep(delay)
-    logging.error(f"All retry attempts failed for {ip}:{port}.")
+def send_packet(sock: socket.socket, ip: str, port: int, packet: bytes) -> None:
+    try:
+        sock.sendto(packet, (ip, port))
+    except Exception as e:
+        logging.error(f"Failed to send packet to {ip}:{port}: {e}")
 
 
 async def send_packet_async(ip: str, port: int, packet: bytes) -> None:
@@ -202,7 +188,8 @@ def play_video(video_path: str, loop: bool = False, max_fps: float = None) -> No
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     logging.debug("Converted BGR frame to RGB.")
                 else:
-                    logging.error(f"Unexpected number of channels: {frame.shape[2]}")
+                    logging.error(f"Unexpected number of channels: {
+                                  frame.shape[2]}")
                     continue  # Skip this frame
 
                 # Resize the frame to match the grid size
@@ -212,25 +199,31 @@ def play_video(video_path: str, loop: bool = False, max_fps: float = None) -> No
 
                 # Ensure resized_frame has shape (grid_rows, grid_cols, 3)
                 if resized_frame.shape != (grid_rows, grid_cols, 3):
-                    logging.error(f"Resized frame has unexpected shape: {resized_frame.shape}")
+                    logging.error(f"Resized frame has unexpected shape: {
+                                  resized_frame.shape}")
                     continue  # Skip this frame
 
                 # Extract colors for each window
-                reshaped_frame = resized_frame.reshape(-1, 3)  # Shape: (num_windows, 3)
-                window_colors = [tuple(pixel.tolist()) for pixel in reshaped_frame]
+                # Shape: (num_windows, 3)
+                reshaped_frame = resized_frame.reshape(-1, 3)
+                window_colors = [tuple(pixel.tolist())
+                                 for pixel in reshaped_frame]
                 logging.debug(f"Window colors: {window_colors}")
 
                 # Validate window_colors length
                 if len(window_colors) != num_windows:
-                    logging.error(f"Expected {num_windows} window colors, got {len(window_colors)}")
+                    logging.error(f"Expected {num_windows} window colors, got {
+                                  len(window_colors)}")
                     continue  # Skip this frame
 
                 # Build the full LED color list using NumPy for efficiency
-                full_colors = np.repeat(reshaped_frame, LEDS_PER_WINDOW, axis=0).tolist()
+                full_colors = np.repeat(
+                    reshaped_frame, LEDS_PER_WINDOW, axis=0).tolist()
 
                 # Ensure the color list has exactly TOTAL_LEDS entries
                 if len(full_colors) < TOTAL_LEDS:
-                    full_colors += [(0, 0, 0)] * (TOTAL_LEDS - len(full_colors))
+                    full_colors += [(0, 0, 0)] * \
+                        (TOTAL_LEDS - len(full_colors))
                 elif len(full_colors) > TOTAL_LEDS:
                     full_colors = full_colors[:TOTAL_LEDS]
 
@@ -243,7 +236,8 @@ def play_video(video_path: str, loop: bool = False, max_fps: float = None) -> No
                 if time_to_wait > 0:
                     time.sleep(time_to_wait)
                 else:
-                    logging.warning(f"Frame processing is slower ({elapsed:.3f}s) than frame duration ({frame_duration:.3f}s).")
+                    logging.warning(f"Frame processing is slower ({
+                                    elapsed:.3f}s) than frame duration ({frame_duration:.3f}s).")
 
             except Exception as e:
                 logging.error(f"An error occurred while processing frame: {e}")
