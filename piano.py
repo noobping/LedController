@@ -48,6 +48,12 @@ KEY_TO_WINDOW = {
 def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes) for the entire LED array.
+
+    Args:
+        colors: A list of RGB tuples (0-255) representing the colors.
+
+    Returns:
+        A byte array representing the DRGB packet.
     """
     colors = colors[::-1]  # Reverse the order of the colors
 
@@ -60,6 +66,11 @@ def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
 def send_packet(ip: str, port: int, packet: bytes) -> None:
     """
     Send a UDP packet to a specified WLED controller.
+
+    Args:
+        ip: The IP address of the WLED controller.
+        port: The port of the WLED controller.
+        packet: The DRGB packet to send.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(packet, (ip, port))
@@ -69,6 +80,12 @@ def get_color_frame_for_key(key: str) -> List[Tuple[int, int, int]]:
     """
     Build a color array of length TOTAL_LEDS (400).
     All LEDs off (black) except the 20 LEDs corresponding to the pressed key.
+
+    Args:
+        key: The keyboard key that was pressed.
+
+    Returns:
+        A list of RGB tuples (0-255) representing the color
     """
     # Start all LEDs off
     logging.debug("Clearing all LEDs")
@@ -100,9 +117,12 @@ def get_color_frame_for_key(key: str) -> List[Tuple[int, int, int]]:
     return new_colors
 
 
-def send_frames_in_parallel(colors: List[Tuple[int, int, int]]):
+def send_frames_in_parallel(colors: List[Tuple[int, int, int]]) -> None:
     """
     Slice the 400-LED color array per controller and send in parallel.
+
+    Args:
+        colors: A list of RGB tuples (0-255) representing the colors.
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
         futures = []
@@ -124,17 +144,21 @@ def main():
     logging.info(
         "Press one of the mapped keys (q w e r t ... ;). Press ESC to quit.")
 
-    def on_key_press(event):
+    def on_key_press(event) -> bool:
+        """
+        Callback for keyboard events. 
+        """
         key_str = event.name  # e.g. 'q', 'w', etc.
         if key_str == 'esc':
             logging.info("ESC pressed. Exiting...")
-            keyboard.unhook_all()
-            exit(0)
+            keyboard.unhook_all()  # Remove all hooks
+            return False  # Stop the listener
 
         # Build the color frame for the pressed key
         colors = get_color_frame_for_key(key_str)
         # Send them in parallel
         send_frames_in_parallel(colors)
+        return True
 
     # Hook into keyboard events
     keyboard.on_press(on_key_press)
