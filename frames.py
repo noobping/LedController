@@ -70,7 +70,6 @@ def make_custom_frame(
 
 
 if __name__ == "__main__":
-    # Example usage
     from animation import run_animation_frames
 
     run_animation_frames(
