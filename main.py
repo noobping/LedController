@@ -83,7 +83,6 @@ WINDOWS_PER_CONTROLLER = 5
 LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20
 TOTAL_CONTROLLERS = len(WLED_IPS)
 TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
-FRAME_INTERVAL = 5  # seconds
 
 stopVideo = False
 video_thread = None
@@ -300,34 +299,35 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
 
 def run_christmas_animation():
     """
-    Runs the Christmas animation by alternating between two frames every 5 counts.
-    Each frame is held for FRAME_INTERVAL seconds before switching.
+    Sends the same frame every 0.1 seconds. After 5 seconds, it toggles to the other frame.
+    Continues this pattern (5 seconds on, 5 seconds off) until 'stopChristmas' is set to True.
     """
     global stopChristmas
-    logging.info(
-        "Starting Christmas animation with alternating frames every 5 counts.")
+    logging.info("Starting Christmas animation with 0.1s sends, switching frames every 5s.")
 
-    counter = 0  # Initialize the counter
-    enabled = False  # Determines which frame to send
+    enabled = True  # Determines which frame to send (True => one pattern, False => alternate)
 
     while not stopChristmas:
-        # Generate the current frame based on the 'enabled' flag
-        colors = make_christmas_frame(enabled)
-        send_frames(colors)
-        logging.debug(f"Sent frame {'Enabled' if enabled else 'Disabled'}. Counter: {
-                      counter + 1}/{FRAME_INTERVAL}")
+        # Start of a 5-second block
+        block_start = time.monotonic()
 
-        time.sleep(0.3) # Sleep for 0.3 seconds
-        counter += 1  # Increment the counter
+        # Send the same frame repeatedly for 5 seconds (unless we stop early)
+        while (time.monotonic() - block_start < 5) and not stopChristmas:
+            # Generate the current frame (enabled or disabled)
+            colors = make_christmas_frame(enabled)
 
-        if counter >= FRAME_INTERVAL:
-            # Switch frames after 5 counts
+            # Send the same frame
+            send_frames(colors)
+
+            # Sleep 0.1s between sends
+            time.sleep(0.1)
+
+        if not stopChristmas:
+            # After 5s, toggle to the other frame
             enabled = not enabled
-            counter = 0  # Reset the counter
-            logging.info(f"Switched to {
-                         'Enabled' if enabled else 'Disabled'} frame.")
+            logging.info(f"Switched to {'enabled' if enabled else 'disabled'} frame.")
 
-    # Clear the LEDs when stopping
+    # Clear LEDs when stopping
     black = [(0, 0, 0)] * TOTAL_LEDS
     send_frames(black)
     logging.info("Christmas animation stopped and LEDs cleared.")
@@ -337,7 +337,7 @@ def start_christmas():
     """
     Starts the Christmas animation. Stops any ongoing video playback or other animations.
     """
-    global christmas_thread, stopChristmas, video_thread, stopVideo
+    global christmas_thread, stopChristmas
 
     # Reset the stop flag
     stopChristmas = False
