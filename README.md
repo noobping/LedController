@@ -13,3 +13,9 @@ For example:
 ```bash
 python ./video.py --video ./video/windows_21_dec.mp4 --loop
 ```
+
+Or start the web API:
+
+```bash
+python ./main.py
+```
