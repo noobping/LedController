@@ -167,7 +167,6 @@ def run_animation_interval(
 
 
 if __name__ == "__main__":
-    from animation import run_animation_interval
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s %(levelname)s %(message)s")
 
