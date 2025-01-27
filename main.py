@@ -317,7 +317,7 @@ def run_christmas_animation():
         logging.debug(f"Sent frame {'Enabled' if enabled else 'Disabled'}. Counter: {
                       counter + 1}/{FRAME_INTERVAL}")
 
-        time.sleep(1)  # Sleep for 1 second
+        time.sleep(0.3) # Sleep for 0.3 seconds
         counter += 1  # Increment the counter
 
         if counter >= FRAME_INTERVAL:
