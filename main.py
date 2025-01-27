@@ -325,7 +325,7 @@ def run_christmas_animation():
         if not stopChristmas:
             # After 5s, toggle to the other frame
             enabled = not enabled
-            logging.info(f"Switched to {'enabled' if enabled else 'disabled'} frame.")
+            logging.info(f"Switched to {'Red' if enabled else 'Green'} frame.")
 
     # Clear LEDs when stopping
     black = [(0, 0, 0)] * TOTAL_LEDS
