@@ -11,6 +11,7 @@ import queue
 import requests
 import socket
 import time
+import httpx
 import uvicorn
 from threading import Thread
 
@@ -449,20 +450,21 @@ app = FastAPI(
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     """
     Health check endpoint to verify if the WLED controllers are reachable.
     """
     health_status = {}
-    for ip in WLED_IPS:
-        try:
-            resp = requests.get(f"http://{ip}/json")
-            if resp.status_code == 200:
+    async with httpx.AsyncClient() as client:
+        tasks = [client.get(f"http://{ip}/json") for ip in WLED_IPS]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        for ip, resp in zip(WLED_IPS, responses):
+            if isinstance(resp, Exception):
+                health_status[ip] = f"Error: {resp}"
+            elif resp.status_code == 200:
                 health_status[ip] = "OK"
             else:
                 health_status[ip] = "Error"
-        except Exception as e:
-            health_status[ip] = f"Error: {e}"
     return health_status
 
 
