@@ -2,30 +2,41 @@
 
 The docker-based LedController for LS HQ.
 
-Run one of the following commands to start a light show:
+## Video player
+
+Run the following command to start the video light show:
 
 ```bash
-python ./christmas.py
-python ./rainbow.py
-python ./frames.py
+python ./video.py --video <video> --loop
 ```
 
-The script will run indefinitely until you stop it with `Ctrl+C`.
-
-## Keybord
-
-Run the following command to start the keyboard light show:
+For example:
 
 ```bash
-python ./piano.py
+python ./video.py --video ./video/windows_21_dec.mp4 --loop
 ```
 
-Use the following keys to control the light show:
+## Web API
 
-- `ESC` - Quit the light show
-- `QWERTYUIOP` - Activate the top windows.
-- `ASDFGHJKL;` - Activate the bottom windows.
-- `Q` - Activate the top left window (Lawrence).
-- `P` - Activate the top right window (Lucas).
-- `A` - Activate the bottom left window (Marcel).
-- `;` - Activate the bottom right window (Technische Diest).
+Start the web API:
+
+```bash
+python ./main.py
+```
+
+Endpoints:
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | / | Returns information about the API and its capabilities. |
+| GET | /health | Health check endpoint to verify if the WLED controllers are reachable. |
+| POST | /christmas | Starts the Christmas animation. |
+| DELETE | /christmas | Stops any ongoing video playback. |
+| POST | /piano/{controller_idx}/{window_idx} | Lights up exactly one window (20 LEDs) in white for a given controller+window. All other LEDs are off (black). |
+| DELETE | /piano | Stops any ongoing video playback. |
+| GET | /video | Returns the names (without extension) of all .mp4 files in the /videos folder. |
+| POST | /video/{video_name} | Starts looping the given video file. |
+| DELETE | /video | Stops any ongoing video playback. |
+| DELETE | /video/{video_name} | Stops any ongoing video playback. |
+| GET | /brightness | Returns the current brightness value. |
+| POST | /brightness/{value} | Sets brightness (0-255) on all WLED controllers. |

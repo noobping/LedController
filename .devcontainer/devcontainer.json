@@ -1,0 +1,13 @@
+{
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "settings": {},
+    "extensions": [
+        "ms-python.python",
+        "ms-azuretools.vscode-docker",
+        "mhutchie.git-graph",
+        "Tyriar.sort-lines"
+    ],
+    "postCreateCommand": "pip install opencv-python numpy"
+}
