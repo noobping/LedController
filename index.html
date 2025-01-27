@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Led Controller</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  
+  <style>
+    html,
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+
+      --background-color: #f9f9f9;
+      --text-color: #000;
+      --border-color: #ccc;
+      --button-bg: #4caf50;
+      --button-hover-bg: #45a049;
+      --input-bg: #fff;
+      --suggestion-bg: #fff;
+      --suggestion-hover-bg: #f1f1f1;
+      --info: #272727;
+      --warning: #ff9800;
+      --error: #f44336;
+      --command: #3f51b5;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html,
+      body {
+        --background-color: #1e1e1e;
+        --text-color: #ffffff;
+        --border-color: #555;
+        --button-bg: #388e3c;
+        --button-hover-bg: #2e7d32;
+        --input-bg: #2c2c2c;
+        --suggestion-bg: #2c2c2c;
+        --suggestion-hover-bg: #3c3c3c;
+        --info: #ddd;
+        --warning: #fca421;
+        --error: #f44336;
+        --command: #5e72e2;
+      }
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0 auto;
+      padding: 0.5em;
+      box-sizing: border-box;
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+
+    * {
+      font-size: 1em;
+    }
+
+    .output {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 1em;
+      border: 1px solid var(--border-color);
+      padding: 0.5em;
+      overflow-y: auto;
+      background-color: var(--background-color);
+      border-radius: 0.5em;
+    }
+
+    .messages {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      height: 100%;
+    }
+
+    .command-prompt {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .input-container {
+      display: flex;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background-color: var(--input-bg);
+      color: var(--text-color);
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-left: 10px;
+      border: none;
+      background-color: var(--button-bg);
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: var(--button-hover-bg);
+    }
+
+    .suggestions {
+      position: absolute;
+      bottom: 50px;
+      left: 0;
+      right: 0;
+      border: 1px solid var(--border-color);
+      margin-top: 5px;
+      padding: 0;
+      list-style: none;
+      max-height: 150px;
+      overflow-y: auto;
+      background-color: var(--suggestion-bg);
+      z-index: 1000;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .suggestions li {
+      padding: 10px;
+      cursor: pointer;
+      color: var(--text-color);
+    }
+
+    .suggestions li.selected,
+    .suggestions li:hover {
+      background-color: var(--suggestion-hover-bg);
+    }
+
+    /* Message Types */
+    .info {
+      color: var(--info);
+    }
+
+    .warning {
+      color: var(--warning);
+    }
+
+    .error {
+      color: var(--error);
+    }
+
+    .command {
+      color: var(--command);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="output">
+      <div class="messages">
+        <div
+          v-for="(msg, idx) in messages"
+          :key="idx"
+          :class="msg.type"
+        >
+          {{ msg.text }}
+        </div>
+      </div>
+    </div>
+    <div class="command-prompt">
+      <div class="input-container">
+        <input
+          type="text"
+          autofocus
+          autocomplete="off"
+          v-model="currentCommand"
+          @keydown.down.prevent="selectNextSuggestion"
+          @keydown.up.prevent="selectPrevSuggestion"
+          @keydown.enter.prevent="sendCommand"
+          @input="filterSuggestions"
+          placeholder="Type a command (e.g., 'update; <data>')"
+          aria-label="Command input"
+        />
+        <button @click="sendCommand" aria-label="Send command">Send</button>
+      </div>
+      <ul
+        v-if="filteredSuggestions.length > 0"
+        class="suggestions"
+        role="listbox"
+      >
+        <li
+          v-for="(suggestion, index) in filteredSuggestions"
+          :key="index"
+          :class="{ selected: index === selectedSuggestionIndex }"
+          @click="chooseSuggestion(index)"
+          role="option"
+          :aria-selected="index === selectedSuggestionIndex"
+        >
+          {{ suggestion }}
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted, nextTick, onUnmounted } = Vue;
+
+    createApp({
+      setup() {
+        const currentCommand = ref("");
+        const messages = ref([
+          { text: "Welcome to the LED Controller WebSocket Client!", type: 'info' }
+        ]);
+        let socket = null;
+
+        // Example commands for autocomplete
+        const knownCommands = [
+          "christmas",
+          "videolist",
+          "video windows_21_dec",
+          "stop",
+          "brightness 255",
+          "piano 0,0",
+          "setall; ffffff",
+          "update; 000000, ffffff, 000000, ffffff",
+          "difference; (0), ffffff, (1), 000000",
+          "brightness; 128",
+          "videolist;",
+          "video; sampleVideo",
+          "stop;",
+        ];
+
+        const filteredSuggestions = ref([]);
+        const selectedSuggestionIndex = ref(-1);
+        const MAX_MESSAGES = 100;
+
+        // Health check interval ID
+        let healthCheckInterval = null;
+
+        // Dynamically construct WebSocket and fetch URLs based on current location
+        const host = window.location.hostname;
+        const isSecure = window.location.protocol === 'https:';
+        const wsProtocol = isSecure ? 'wss' : 'ws';
+        const httpProtocol = isSecure ? 'https' : 'http';
+        const wsPort = 8901; // Adjust if your WebSocket server uses a different port
+        const wsUrl = `${wsProtocol}://${host}:${wsPort}/ws`;
+        const healthUrl = `${httpProtocol}://${host}:${wsPort}/health`;
+
+        // Function to connect to WebSocket
+        function connect() {
+          socket = new WebSocket(wsUrl);
+
+          socket.onopen = () => {
+            messages.value.push({ text: "Connected to WebSocket.", type: 'info' });
+            scrollToBottom();
+          };
+
+          socket.onmessage = (event) => {
+            messages.value.push({ text: event.data, type: 'info' });
+            if (messages.value.length > MAX_MESSAGES) {
+              messages.value.shift();
+            }
+            scrollToBottom();
+          };
+
+          socket.onerror = (error) => {
+            messages.value.push({ text: "WebSocket Error: " + (error.message || "Unknown error"), type: 'error' });
+            scrollToBottom();
+          };
+
+          socket.onclose = () => {
+            messages.value.push({ text: "WebSocket connection closed.", type: 'warning' });
+            scrollToBottom();
+            // Attempt to reconnect after a delay
+            setTimeout(connect, 5000);
+          };
+        }
+
+        function sendCommand() {
+          const cmd = currentCommand.value.trim();
+          if (!cmd) return;
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(cmd);
+            messages.value.push({ text: "> " + cmd, type: 'command' });
+            if (messages.value.length > MAX_MESSAGES) {
+              messages.value.shift();
+            }
+            currentCommand.value = "";
+            filteredSuggestions.value = [];
+            selectedSuggestionIndex.value = -1;
+            scrollToBottom();
+          } else {
+            messages.value.push({ text: "WebSocket not connected.", type: 'error' });
+            scrollToBottom();
+          }
+        }
+
+        function filterSuggestions() {
+          const input = currentCommand.value.toLowerCase();
+          if (!input) {
+            filteredSuggestions.value = [];
+            selectedSuggestionIndex.value = -1;
+            return;
+          }
+
+          filteredSuggestions.value = knownCommands.filter(cmd =>
+            cmd.toLowerCase().startsWith(input)
+          );
+          selectedSuggestionIndex.value = -1;
+        }
+
+        function selectNextSuggestion() {
+          if (filteredSuggestions.value.length > 0) {
+            selectedSuggestionIndex.value =
+              (selectedSuggestionIndex.value + 1) %
+              filteredSuggestions.value.length;
+            currentCommand.value = filteredSuggestions.value[selectedSuggestionIndex.value];
+          }
+        }
+
+        function selectPrevSuggestion() {
+          if (filteredSuggestions.value.length > 0) {
+            selectedSuggestionIndex.value--;
+            if (selectedSuggestionIndex.value < 0) {
+              selectedSuggestionIndex.value = filteredSuggestions.value.length - 1;
+            }
+            currentCommand.value = filteredSuggestions.value[selectedSuggestionIndex.value];
+          }
+        }
+
+        function chooseSuggestion(index) {
+          currentCommand.value = filteredSuggestions.value[index];
+          filteredSuggestions.value = [];
+          selectedSuggestionIndex.value = -1;
+        }
+
+        function scrollToBottom() {
+          nextTick(() => {
+            const messagesContainer = document.querySelector(".messages");
+            if (messagesContainer) {
+              messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+          });
+        }
+
+        async function checkHealth() {
+          try {
+            const response = await fetch(healthUrl);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            const unreachable = Object.entries(data).filter(([ip, status]) => status !== "OK");
+            if (unreachable.length > 0) {
+              const ips = unreachable.map(([ip]) => ip).join(", ");
+              messages.value.push({
+                text: `Warning: The following devices are unreachable: ${ips}`,
+                type: 'warning'
+              });
+              console.warn("Unreachable devices:", unreachable);
+            } else {
+              messages.value.push({ text: "All devices are healthy.", type: 'info' });
+            }
+          } catch (error) {
+            messages.value.push({
+              text: `Error fetching health status: ${error.message}`,
+              type: 'error'
+            });
+            console.error("Health check failed:", error);
+          } finally {
+            scrollToBottom();
+          }
+        }
+
+        onMounted(() => {
+          messages.value.push({
+            text: "Type a command and press Enter to send it to the server.",
+            type: 'info'
+          });
+          messages.value.push({
+            text: "Use the up and down arrow keys to select a suggestion and press Enter to choose it.",
+            type: 'info'
+          });
+          messages.value.push({
+            text: "Known commands: " + knownCommands.join(", "),
+            type: 'info'
+          });
+          messages.value.push({
+            text: "Connecting to WebSocket...",
+            type: 'info'
+          });
+          connect();
+          checkHealth();
+
+          // Set up a periodic health check every 60 seconds
+          healthCheckInterval = setInterval(checkHealth, 60000);
+        });
+
+        // Clean up on unmount
+        onUnmounted(() => {
+          if (socket) {
+            socket.close();
+          }
+          if (healthCheckInterval) {
+            clearInterval(healthCheckInterval);
+          }
+        });
+
+        return {
+          currentCommand,
+          messages,
+          filteredSuggestions,
+          selectedSuggestionIndex,
+          sendCommand,
+          filterSuggestions,
+          selectNextSuggestion,
+          selectPrevSuggestion,
+          chooseSuggestion,
+        };
+      },
+    }).mount("#app");
+  </script>
+</body>
+</html>

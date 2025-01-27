@@ -28,7 +28,8 @@ Endpoints:
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| GET | / | Returns information about the API and its capabilities. |
+| GET | / | Returns a web console to control the LED lights. |
+| GET | /info | Returns information about the API and its capabilities. |
 | GET | /health | Health check endpoint to verify if the WLED controllers are reachable. |
 | POST | /christmas | Starts the Christmas animation. |
 | DELETE | /christmas | Stops any ongoing video playback. |

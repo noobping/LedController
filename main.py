@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import FileResponse
 from typing import List, Tuple
 import asyncio
 import concurrent.futures
@@ -449,6 +450,22 @@ app = FastAPI(
 )
 
 
+@app.get("/")
+async def index():
+    """
+    Default web page.
+    """
+    # Determine the path to the index.html file
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, "index.html")
+    
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="index.html not found")
+    
+    return FileResponse(file_path)
+
+
 @app.get("/health")
 async def health_check():
     """
@@ -468,7 +485,7 @@ async def health_check():
     return health_status
 
 
-@app.get("/")
+@app.get("/info")
 async def about():
     """
     Returns information about the API and its capabilities.
