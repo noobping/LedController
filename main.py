@@ -3,42 +3,38 @@ from pydantic import BaseModel
 from typing import List, Tuple
 from threading import Thread
 import socket
-import uvicorn
 import requests
 import time
 import numpy as np
 import cv2 as cv
 import os
 import glob
-
-# --------------------------------------------------------------------------------
-#                              NEW VIDEO/LED LOGIC
-# --------------------------------------------------------------------------------
-
 import concurrent.futures
 import logging
+import uvicorn
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 
-# These are taken from your snippet, but placed in the same file for clarity.
-# Adjust or rename if you prefer.
+# --------------------------------------------------------------------------------
+#                          NEW VIDEO + PIANO LED LOGIC
+# --------------------------------------------------------------------------------
+
+# These match your existing WLED controller setup
 WLED_IPS = [
     "192.168.107.123",  # Top Left
     "192.168.107.122",  # Top Right
     "192.168.107.120",  # Bottom Right
     "192.168.107.121",  # Bottom Left
 ]
-PORT = 19446  # WLED’s real-time UDP port
-
+PORT = 19446
 LEDS_PER_CONTROLLER = 100
 WINDOWS_PER_CONTROLLER = 5
 LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20
 TOTAL_CONTROLLERS = len(WLED_IPS)
 TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
-BYTES_PER_LED = 3  # R, G, B
+BYTES_PER_LED = 3
 
-# A global “stop” flag and a global thread reference to control video playback
 stopVideo = False
 video_thread = None
 
@@ -46,10 +42,8 @@ video_thread = None
 def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes) for the entire LED array.
-    Reverses the color list before building, matching your snippet.
     """
-    reversed_colors = colors[::-
-                             1]  # Reverse the color order as in your snippet
+    reversed_colors = colors[::-1]
     packet = bytearray()
     for (r, g, b) in reversed_colors:
         packet += bytes([r, g, b])
@@ -72,13 +66,12 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     and sends them in parallel to the WLED IPs.
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
-        futures = []
         for idx, ip in enumerate(WLED_IPS):
             start_idx = idx * LEDS_PER_CONTROLLER
             end_idx = start_idx + LEDS_PER_CONTROLLER
             controller_slice = colors[start_idx:end_idx]
             packet = build_packet(controller_slice)
-            futures.append(executor.submit(send_packet, ip, PORT, packet))
+            executor.submit(send_packet, ip, PORT, packet)
 
 
 def play_video(video_path: str, max_fps: float = None) -> None:
@@ -88,7 +81,6 @@ def play_video(video_path: str, max_fps: float = None) -> None:
     """
     global stopVideo
 
-    # Loop forever, or until stopVideo is True
     while not stopVideo:
         cap = cv.VideoCapture(video_path)
         if not cap.isOpened():
@@ -105,7 +97,7 @@ def play_video(video_path: str, max_fps: float = None) -> None:
 
         logging.info(f"Playing video in a loop: {video_path} at {fps} FPS")
 
-        # We assume a 4x5 grid (4 controllers x 5 windows) => 20 windows total
+        # Per your snippet, 4 rows x 5 columns => 20 windows total
         grid_rows = 4
         grid_cols = 5
 
@@ -113,10 +105,8 @@ def play_video(video_path: str, max_fps: float = None) -> None:
             frame_start_time = time.time()
             ret, frame = cap.read()
             if not ret:
-                # If the video ended, break to restart from the beginning
+                # End of video => start again
                 break
-
-            # Stop if requested
             if stopVideo:
                 break
 
@@ -131,11 +121,11 @@ def play_video(video_path: str, max_fps: float = None) -> None:
                 # BGR to RGB
                 frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
-            # Resize frame to 5x4 = (grid_cols x grid_rows)
+            # Resize to 5x4
             resized_frame = cv.resize(
                 frame, (grid_cols, grid_rows), interpolation=cv.INTER_AREA)
 
-            # Flatten out the window-colors
+            # Flatten each "window" pixel
             reshaped_frame = resized_frame.reshape(-1, 3)  # shape -> (20, 3)
             # Repeat each color LEDS_PER_WINDOW times -> 20 * 20 = 400
             full_colors = np.repeat(
@@ -147,10 +137,10 @@ def play_video(video_path: str, max_fps: float = None) -> None:
             elif len(full_colors) > TOTAL_LEDS:
                 full_colors = full_colors[:TOTAL_LEDS]
 
-            # Send out to WLED
+            # Send to WLED
             send_frames(full_colors)
 
-            # Try to keep up with FPS
+            # Wait if needed
             elapsed = time.time() - frame_start_time
             wait_time = frame_duration - elapsed
             if wait_time > 0:
@@ -158,7 +148,7 @@ def play_video(video_path: str, max_fps: float = None) -> None:
 
         cap.release()
 
-    # Once stopped, optionally clear the LEDs
+    # Once stopped, clear the LEDs
     black = [(0, 0, 0)] * TOTAL_LEDS
     send_frames(black)
     logging.info("Video playback stopped or finished.")
@@ -178,10 +168,9 @@ def start_video(videoName: str):
 
     # Reset the stop flag
     stopVideo = False
-    # Construct the full path to the video inside /videos
+    # Construct path to /videos/videoName.mp4 (or other extension)
     video_path = os.path.join(os.path.dirname(__file__), 'videos', videoName)
 
-    # Start a new thread
     video_thread = Thread(target=play_video, args=(video_path,), daemon=True)
     video_thread.start()
 
@@ -196,20 +185,52 @@ def stop_video():
         video_thread.join()
     video_thread = None
 
+# --------------------------------------------------------------------------------
+#                         PIANO-LIKE LOGIC VIA WEBSOCKET
+# --------------------------------------------------------------------------------
+
+
+def handle_piano(controller_idx: int, window_idx: int):
+    """
+    Reproduce the "piano key" logic:
+      - Turn all LEDs off except the 20 LEDs for (controller_idx, window_idx),
+        which we set to white (255,255,255).
+    """
+    if not (0 <= controller_idx < TOTAL_CONTROLLERS):
+        logging.error(f"Invalid controller index: {controller_idx}")
+        return
+    if not (0 <= window_idx < WINDOWS_PER_CONTROLLER):
+        logging.error(f"Invalid window index: {window_idx}")
+        return
+
+    # Start all LEDs off
+    colors = [(0, 0, 0)] * TOTAL_LEDS
+
+    # Calculate the absolute LED indices for that window
+    start_led = window_idx * LEDS_PER_WINDOW
+    end_led = start_led + LEDS_PER_WINDOW
+    absolute_start = controller_idx * LEDS_PER_CONTROLLER + start_led
+    absolute_end = controller_idx * LEDS_PER_CONTROLLER + end_led
+
+    # Make those 20 LEDs white
+    for i in range(absolute_start, absolute_end):
+        colors[i] = (255, 255, 255)
+
+    # Send to the WLED controllers
+    send_frames(colors)
 
 # --------------------------------------------------------------------------------
-#                 FASTAPI APP + REMAINING ENDPOINTS (UNCHANGED SIGNATURES)
+#                          FASTAPI APP + ENDPOINTS
 # --------------------------------------------------------------------------------
 
-description = """<br>
+
+description = """
 This API is used to send UDP commands to WLED controllers to control their LEDs like they're a 2D matrix.<br>
 The API requires the user to send a full (for now) virtual state of the matrix' colors in hex strings to one of the API's endpoints, which the server will then use to update the real LED matrix.<br><br>
-The API has two endpoints from which it can be accessed:
-* **HTTP Post requests** at http://{server_ip}/update, requires the virtual state in JSON as input. (This is however deprecated and should not be used.)
-* **Websocket**: at ws://{server_ip}/ws, requires the virtual state in a byte array with the text "update; " in front.
-
-Besides the update function, which updates the entire matrix, there is also a setAllColors function, which goes mostly unused.
-<br><br>"""
+The API has two endpoints from which it can be accessed:<br>
+* **HTTP Post requests** at http://{server_ip}/update, requires the virtual state in JSON as input. (This is however deprecated and should not be used.)<br>
+* **Websocket**: at ws://{server_ip}/ws, requires the virtual state in a byte array with the text "update; " in front.<br>
+"""
 
 app = FastAPI(
     title="LedControllerAPI",
@@ -223,41 +244,26 @@ app = FastAPI(
     }
 )
 
-# We'll keep these for reference, but note that we've switched to 400 total LEDs now.
-LEDS_PER_WINDOW_DEPRECATED: int = 20
-WINDOWS_PER_WLED_DEPRECATED: int = 5
-LEDS_PER_WLED_DEPRECATED: int = LEDS_PER_WINDOW_DEPRECATED * \
-    WINDOWS_PER_WLED_DEPRECATED
-WLED_IPS_DEPRECATED: Tuple[str, ...] = (
-    "192.168.107.123",
-    "192.168.107.122",
-    "192.168.107.120",
-    "192.168.107.121"
-)
-LEDS_IN_MATRIX_DEPRECATED: int = LEDS_PER_WLED_DEPRECATED * \
-    len(WLED_IPS_DEPRECATED)
-UDP_PORT_DEPRECATED: int = 21324
-
-# We store a global "currentFrame" so that 'update_differences' can patch it
-# and then re-send. This must be 400 LEDs now (matching your new logic).
+# For the old "matrix" logic, we keep a global frame
 currentFrame = ["000000"] * TOTAL_LEDS
 
 
 class ColorMatrix(BaseModel):
-    State: List[str]  # Each item is a hex color "RRGGBB"
+    State: List[str]  # Each "RRGGBB"
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    The WebSocket command structure remains the same:
-    - "setall;  RRGGBB"
-    - "update;  RRGGBB, RRGGBB, ..."
-    - "difference;  (index), (RRGGBB), (index), (RRGGBB), ..."
-    - "videolist; "
-    - "video;  videoName"
-    - "stop; "
-    - "brightness;  int_value"
+    WebSocket commands:
+      - "setall; RRGGBB"
+      - "update; RRGGBB, RRGGBB, ..."
+      - "difference; (index), (RRGGBB), (index), (RRGGBB), ..."
+      - "videolist;"
+      - "video; videoFileName"
+      - "stop;"
+      - "brightness; intValue"
+      - "piano; controller_idx,window_idx"
     """
     await websocket.accept()
     try:
@@ -266,34 +272,47 @@ async def websocket_endpoint(websocket: WebSocket):
             parts = data.split(b"; ")
             command = parts[0]
 
-            match command:
-                case b"setall":
-                    setAllColors(parts[1].decode())
-                case b"update":
-                    matrix = ColorMatrix(State=parts[1].split(b", "))
-                    # decode each from bytes -> str
-                    matrix.State = [m.decode() for m in matrix.State]
-                    update_matrix(matrix)
-                case b"difference":
-                    diffs = parts[1].split(b", ")
-                    differences = [d.strip(b"()").decode() for d in diffs]
-                    # group them in pairs [ (index, color), (index, color), ... ]
-                    differences = [differences[i:i+2]
-                                   for i in range(0, len(differences), 2)]
-                    update_differences(differences)
-                case b"videolist":
-                    await websocket.send_text(("videos: " + ", ".join(get_video_list())))
-                case b"video":
-                    start_video(parts[1].decode())
-                case b"stop":
-                    stop_video()
-                case b"brightness":
-                    set_brightness(int(parts[1]))
-                case _:
-                    print("Unknown websocket command:", command.decode())
+            if command == b"setall":
+                setAllColors(parts[1].decode())
+
+            elif command == b"update":
+                matrix = ColorMatrix(State=parts[1].split(b", "))
+                matrix.State = [m.decode() for m in matrix.State]
+                update_matrix(matrix)
+
+            elif command == b"difference":
+                diffs = parts[1].split(b", ")
+                differences = [d.strip(b"()").decode() for d in diffs]
+                differences = [differences[i:i+2]
+                               for i in range(0, len(differences), 2)]
+                update_differences(differences)
+
+            elif command == b"videolist":
+                await websocket.send_text("videos: " + ", ".join(get_video_list()))
+
+            elif command == b"video":
+                start_video(parts[1].decode())
+
+            elif command == b"stop":
+                stop_video()
+
+            elif command == b"brightness":
+                set_brightness(int(parts[1]))
+
+            elif command == b"piano":
+                coords = parts[1].decode().split(",")
+                if len(coords) == 2:
+                    c_i = int(coords[0].strip())
+                    w_i = int(coords[1].strip())
+                    handle_piano(c_i, w_i)
+                else:
+                    logging.error(
+                        "Invalid piano command format. Expected: 'piano; X,Y'")
+            else:
+                logging.warning(
+                    "Unknown websocket command: " + command.decode())
 
             await websocket.send_text("OK.")
-
     except WebSocketDisconnect:
         pass
 
@@ -302,8 +321,10 @@ async def websocket_endpoint(websocket: WebSocket):
 def get_video_list():
     """Returns the names of all .mp4 files in the /videos folder."""
     video_path = os.path.join(os.path.dirname(__file__), 'videos')
-    video_list = [os.path.splitext(os.path.basename(v))[0]
-                  for v in glob.glob(os.path.join(video_path, "*.mp4"))]
+    video_list = [
+        os.path.splitext(os.path.basename(v))[0]
+        for v in glob.glob(os.path.join(video_path, "*.mp4"))
+    ]
     return video_list
 
 
@@ -334,10 +355,6 @@ def get_brightness():
     return {"brightness": brightness_levels}
 
 
-# --------------------------------------------------------------------------------
-#                MATRIX UPDATE LOGIC (ONE-SHOT) USING NEW send_frames()
-# --------------------------------------------------------------------------------
-
 def setAllColors(color: str):
     """
     Sets all LEDs to the same hex color. 
@@ -347,7 +364,6 @@ def setAllColors(color: str):
         raise HTTPException(
             status_code=400, detail="Color must be 6 hex chars")
     global currentFrame
-    # Build a 400-length array of the same color
     currentFrame = [color] * TOTAL_LEDS
     send_hex_colors(currentFrame)
 
@@ -387,21 +403,15 @@ def send_hex_colors(hex_array: List[str]):
     then calls send_frames from your new snippet logic.
     """
     if len(hex_array) < TOTAL_LEDS:
-        # Pad with black if needed
         hex_array += ["000000"] * (TOTAL_LEDS - len(hex_array))
-
-    # Convert from "RRGGBB" to (R, G, B) int
     colors = []
     for hexcol in hex_array:
         r = int(hexcol[0:2], 16)
         g = int(hexcol[2:4], 16)
         b = int(hexcol[4:6], 16)
         colors.append((r, g, b))
-
-    # Trim if somehow over
     if len(colors) > TOTAL_LEDS:
         colors = colors[:TOTAL_LEDS]
-
     send_frames(colors)
 
 
@@ -409,11 +419,7 @@ def set_brightness(value: int):
     """
     Sets brightness of all WLED controllers via their HTTP JSON interface.
     """
-    payload = {
-        "on": True,
-        "bri": value,
-        "seg": [{"col": [0, 0, 0]}]
-    }
+    payload = {"on": True, "bri": value, "seg": [{"col": [0, 0, 0]}]}
     for ip in WLED_IPS:
         try:
             requests.post(f"http://{ip}/json", json=payload)
@@ -421,5 +427,14 @@ def set_brightness(value: int):
             continue
 
 
+# --------------------------------------------------------------------------------
+#                            MAIN ENTRY POINT
+# --------------------------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=80,
+        reload=False
+    )
