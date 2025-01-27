@@ -468,7 +468,6 @@ app = FastAPI(
 )
 
 
-@app.get("/")
 @app.get("/health")
 def health_check():
     """
@@ -484,6 +483,14 @@ def health_check():
                 health_status[ip] = "Error"
         except Exception as e:
             health_status[ip] = f"Error: {e}"
+    return health_status
+
+
+@app.get("/")
+def about():
+    """
+    Returns information about the API and its capabilities.
+    """
     return {
         "about": "This API controls WLED-based LED matrices via UDP.",
         "annimation": {
@@ -494,7 +501,7 @@ def health_check():
         "info": {
             "controllers": {
                 "total": TOTAL_CONTROLLERS,
-                "ips": health_status,
+                "ips": health_check(),
                 "port": PORT,
                 "windows_per_controller": WINDOWS_PER_CONTROLLER
             },
