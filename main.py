@@ -300,22 +300,17 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
 
 def run_christmas_animation():
     """
-    Runs the Christmas animation by periodically sending frames.
+    Runs the Christmas animation by sending the same frame every 5 seconds.
     """
     global stopChristmas
-    enabled = False
-    logging.info("Starting Christmas animation.")
+    logging.info("Starting Christmas animation with a single frame.")
+
+    # Create the desired frame once
+    colors = make_christmas_frame(enabled=True)  # Set 'enabled' as needed
 
     while not stopChristmas:
-        colors = make_christmas_frame(enabled)
         send_frames(colors)
-        enabled = not enabled  # Toggle the starting color
-        time.sleep(FRAME_INTERVAL)  # Use the FRAME_INTERVAL constant
-
-    # Clear the LEDs when stopping
-    black = [(0, 0, 0)] * TOTAL_LEDS
-    send_frames(black)
-    logging.info("Christmas animation stopped.")
+        time.sleep(FRAME_INTERVAL)  # Hold the frame for 5 seconds
 
 
 def start_christmas():
@@ -344,23 +339,6 @@ def start_christmas():
     christmas_thread = Thread(target=run_christmas_animation, daemon=True)
     christmas_thread.start()
     logging.info("Christmas animation thread started.")
-
-
-def stop_christmas():
-    """
-    Stops the Christmas animation if it's running.
-    """
-    global stopChristmas, christmas_thread
-    if christmas_thread and christmas_thread.is_alive():
-        logging.info("Stopping Christmas animation.")
-        stopChristmas = True
-        christmas_thread.join()
-        christmas_thread = None
-
-    # Clear LEDs after stopping
-    black = [(0, 0, 0)] * TOTAL_LEDS
-    send_frames(black)
-    logging.info("Christmas animation has been stopped and LEDs cleared.")
 
 
 def stop_animation():
