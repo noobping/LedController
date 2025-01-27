@@ -4,7 +4,8 @@
     },
     "settings": {},
     "extensions": [
-        "ms-python.python"
+        "ms-python.python",
+        "mhutchie.git-graph"
     ],
     "postCreateCommand": "pip install opencv-python numpy"
 }
