@@ -281,17 +281,17 @@ def get_brightness():
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket API supports commands:
-      - "videolist;"
-      - "video; <videoName>"
-      - "stop;"
-      - "brightness; <intValue>"
-      - "piano; <controller_idx>,<window_idx>"
+      - "videolist"
+      - "video <videoName>"
+      - "stop"
+      - "brightness <intValue>"
+      - "piano <controller_idx>,<window_idx>"
     """
     await websocket.accept()
     try:
         while True:
             data = await websocket.receive_bytes()
-            parts = data.split(b"; ")
+            parts = data.split(b" ")
             command = parts[0]
 
             if command == b"videolist":
