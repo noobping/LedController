@@ -827,7 +827,7 @@ async def broadcast_logs():
         for ws in dead_websockets:
             if ws in connected_websockets:
                 connected_websockets.remove(ws)
-                logging.info(f"Removed dead WebSocket. Current count: {len(connected_websockets)}")
+                logging.info("Removed dead WebSocket.")
 
 
 if __name__ == "__main__":
