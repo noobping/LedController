@@ -11,10 +11,56 @@ import numpy as np
 import concurrent.futures
 from threading import Thread
 from typing import List, Tuple
+import asyncio
+
+# --------------------------------------------------------------------------------
+#                           LOGGING CONFIGURATION
+# --------------------------------------------------------------------------------
+
+# List to keep track of connected WebSocket clients
+connected_websockets: List[WebSocket] = []
+
+# Asynchronous queue to hold log messages
+log_queue = asyncio.Queue()
 
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s")
+class WebSocketLogHandler(logging.Handler):
+    """
+    Custom logging handler that sends log records to an asyncio.Queue.
+    """
+
+    def __init__(self, level=logging.NOTSET):
+        super().__init__(level=level)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Send the log record's message into an asyncio queue."""
+        msg = self.format(record)
+        try:
+            # Use asyncio.run_coroutine_threadsafe to enqueue log messages from any thread
+            asyncio.run_coroutine_threadsafe(
+                log_queue.put(msg), asyncio.get_event_loop())
+        except RuntimeError:
+            # Event loop might not be running yet
+            pass
+
+
+# Configure the root logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Remove existing handlers to prevent duplicate logs
+logger.handlers = []
+
+# Create and add console handler
+console_handler = logging.StreamHandler()
+console_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# Create and add WebSocket log handler
+ws_handler = WebSocketLogHandler()
+ws_handler.setFormatter(console_formatter)
+logger.addHandler(ws_handler)
 
 # --------------------------------------------------------------------------------
 #                         WLED & VIDEO CONFIGURATION
@@ -37,7 +83,6 @@ TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
 
 stopVideo = False
 video_thread = None
-
 
 # --------------------------------------------------------------------------------
 #                           LOW-LEVEL LED LOGIC
@@ -79,7 +124,6 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
             packet = build_packet(controller_slice)
             executor.submit(send_packet, ip, PORT, packet)
 
-
 # --------------------------------------------------------------------------------
 #                         PIANO LOGIC (VIA WEBSOCKET)
 # --------------------------------------------------------------------------------
@@ -111,7 +155,6 @@ def handle_piano(controller_idx: int, window_idx: int):
         colors[i] = (255, 255, 255)
 
     send_frames(colors)
-
 
 # --------------------------------------------------------------------------------
 #                         VIDEO PLAYBACK LOGIC
@@ -218,7 +261,6 @@ def stop_video():
         video_thread.join()
     video_thread = None
 
-
 # --------------------------------------------------------------------------------
 #                           FASTAPI APPLICATION
 # --------------------------------------------------------------------------------
@@ -289,6 +331,12 @@ async def websocket_endpoint(websocket: WebSocket):
       - "piano <controller_idx>,<window_idx>"
     """
     await websocket.accept()
+
+    # Register this websocket
+    connected_websockets.append(websocket)
+    logging.info(f"WebSocket connected. Current count: {
+                 len(connected_websockets)}")
+
     try:
         while True:
             data = await websocket.receive_bytes()
@@ -302,6 +350,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif command == b"video":
                 # Start a looping video
+                if len(parts) < 2:
+                    await websocket.send_text("Error: Missing video name.")
+                    continue
                 video_name = parts[1].decode()
                 start_video(video_name + ".mp4")
 
@@ -311,28 +362,50 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif command == b"brightness":
                 # Set brightness
-                value = int(parts[1])
-                set_brightness(value)
+                if len(parts) < 2:
+                    await websocket.send_text("Error: Missing brightness value.")
+                    continue
+                try:
+                    value = int(parts[1])
+                    set_brightness(value)
+                except ValueError:
+                    await websocket.send_text("Error: Brightness value must be an integer.")
+                    continue
 
             elif command == b"piano":
-                # Example: "piano; 0,2"
+                # Example: "piano 0,2"
+                if len(parts) < 2:
+                    await websocket.send_text("Error: Missing piano coordinates.")
+                    continue
                 coords = parts[1].decode().split(",")
                 if len(coords) == 2:
-                    controller_idx = int(coords[0])
-                    window_idx = int(coords[1])
-                    handle_piano(controller_idx, window_idx)
+                    try:
+                        controller_idx = int(coords[0])
+                        window_idx = int(coords[1])
+                        handle_piano(controller_idx, window_idx)
+                    except ValueError:
+                        await websocket.send_text("Error: Controller and window indices must be integers.")
+                        continue
                 else:
                     logging.error(
-                        "Invalid piano command format. Expected: 'piano; X,Y'")
+                        "Invalid piano command format. Expected: 'piano X,Y'")
+                    await websocket.send_text("Error: Invalid piano command format. Expected: 'piano X,Y'")
 
             else:
                 logging.warning(f"Unknown WebSocket command: {
                                 command.decode()}")
+                await websocket.send_text("Error: Unknown command.")
 
             # Confirm
             await websocket.send_text("OK.")
     except WebSocketDisconnect:
-        pass
+        logging.info("WebSocket disconnected")
+    finally:
+        # Unregister this websocket
+        if websocket in connected_websockets:
+            connected_websockets.remove(websocket)
+            logging.info(f"WebSocket disconnected. Current count: {
+                         len(connected_websockets)}")
 
 
 def set_brightness(value: int):
@@ -343,12 +416,40 @@ def set_brightness(value: int):
     for ip in WLED_IPS:
         try:
             requests.post(f"http://{ip}/json", json=payload)
+            logging.info(f"Set brightness to {value} on {ip}")
         except Exception as e:
             logging.error(f"Failed to set brightness on {ip}: {e}")
 
 
-# --------------------------------------------------------------------------------
-#                          MAIN ENTRY POINT
-# --------------------------------------------------------------------------------
+async def broadcast_logs():
+    """Background task: continually read from log_queue and send to all websockets."""
+    while True:
+        msg = await log_queue.get()   # Wait until a log message is available
+        # Broadcast this `msg` to all connected websockets
+        dead_websockets = []
+        for ws in connected_websockets:
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                # Mark this websocket as dead/disconnected
+                dead_websockets.append(ws)
+
+        # Remove the dead websockets
+        for ws in dead_websockets:
+            if ws in connected_websockets:
+                connected_websockets.remove(ws)
+                logging.info(f"Removed dead WebSocket. Current count: {
+                             len(connected_websockets)}")
+
+
+@app.on_event("startup")
+async def app_startup():
+    """
+    On startup, spin up the background task that forwards
+    all log messages from the queue to the connected websockets.
+    """
+    asyncio.create_task(broadcast_logs())
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=80, reload=False)
