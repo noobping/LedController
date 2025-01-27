@@ -617,8 +617,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     connected_websockets.append(websocket)
-    logging.info(f"WebSocket connected. Current count: {
-                 len(connected_websockets)}")
+    logging.info(f"WebSocket connected. Current count: {len(connected_websockets)}")
 
     try:
         while True:
@@ -757,14 +756,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     logging.warning(
                         f"Unknown new-style WebSocket command: {command}")
                     await websocket.send_text("Error: Unknown command.")
-
     except WebSocketDisconnect:
         logging.info("WebSocket disconnected")
     finally:
         if websocket in connected_websockets:
             connected_websockets.remove(websocket)
-        logging.info(f"WebSocket disconnected. Current count: {
-                     len(connected_websockets)}")
+        logging.info(f"WebSocket disconnected. Current count: {len(connected_websockets)}")
 
 
 def apply_legacy_state():
