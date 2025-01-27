@@ -784,7 +784,7 @@ def set_brightness(value: int):
     """
     Sets brightness on all WLED controllers via /json endpoint.
     """
-    payload = {"on": True, "bri": value, "seg": [{"col": [0, 0, 0]}]}
+    payload = {"state": {"on": True, "bri": value}}
     for ip in WLED_IPS:
         try:
             requests.post(f"http://{ip}/json", json=payload)
