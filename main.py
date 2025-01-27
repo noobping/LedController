@@ -302,7 +302,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif command == b"video":
                 # Start a looping video
                 video_name = parts[1].decode()
-                start_video(video_name)
+                start_video(video_name + ".mp4")
 
             elif command == b"stop":
                 # Stop looping video
