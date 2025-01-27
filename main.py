@@ -469,10 +469,11 @@ async def health_check():
 
 
 @app.get("/")
-def about():
+async def about():
     """
     Returns information about the API and its capabilities.
     """
+    current_health = await health_check()
     return {
         "about": "This API controls WLED-based LED matrices via UDP.",
         "animation": {
@@ -483,7 +484,7 @@ def about():
         "info": {
             "controllers": {
                 "total": TOTAL_CONTROLLERS,
-                "ips": health_check(),
+                "ips": current_health,
                 "port": PORT,
                 "windows_per_controller": WINDOWS_PER_CONTROLLER
             },
@@ -580,22 +581,22 @@ def set_brightness_endpoint(value: int):
 
 
 @app.get("/brightness")
-def get_brightness():
+async def get_brightness():
     """
     Fetches brightness levels from all WLED controllers.
     """
     brightness_levels = {}
-    for ip in WLED_IPS:
-        try:
-            resp = requests.get(f"http://{ip}/json")
-            if resp.status_code == 200:
+    async with httpx.AsyncClient() as client:
+        tasks = [client.get(f"http://{ip}/json") for ip in WLED_IPS]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        for ip, resp in zip(WLED_IPS, responses):
+            if isinstance(resp, Exception):
+                brightness_levels[ip] = f"Error: {resp}"
+            elif resp.status_code == 200:
                 data = resp.json()
-                brightness_levels[ip] = data.get(
-                    "state", {}).get("bri", "Unknown")
+                brightness_levels[ip] = data.get("state", {}).get("bri", "Unknown")
             else:
                 brightness_levels[ip] = "Error fetching brightness"
-        except Exception as e:
-            brightness_levels[ip] = f"Error: {e}"
     return {"brightness": brightness_levels}
 
 
