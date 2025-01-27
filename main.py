@@ -152,6 +152,7 @@ def play_video(video_path: str, max_fps: float = None):
                 # End of video => break to restart loop
                 break
             if stopVideo:
+                logging.info("stopping video playback...")
                 break
 
             # Convert to RGB if needed
