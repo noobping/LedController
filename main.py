@@ -18,7 +18,8 @@ import glob
 import concurrent.futures
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(message)s")
 
 # These are taken from your snippet, but placed in the same file for clarity.
 # Adjust or rename if you prefer.
@@ -41,16 +42,19 @@ BYTES_PER_LED = 3  # R, G, B
 stopVideo = False
 video_thread = None
 
+
 def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes) for the entire LED array.
     Reverses the color list before building, matching your snippet.
     """
-    reversed_colors = colors[::-1]  # Reverse the color order as in your snippet
+    reversed_colors = colors[::-
+                             1]  # Reverse the color order as in your snippet
     packet = bytearray()
     for (r, g, b) in reversed_colors:
         packet += bytes([r, g, b])
     return packet
+
 
 def send_packet(ip: str, port: int, packet: bytes) -> None:
     """Send a UDP packet to a specified WLED controller."""
@@ -60,6 +64,7 @@ def send_packet(ip: str, port: int, packet: bytes) -> None:
         sock.close()
     except Exception as e:
         logging.error(f"Failed to send packet to {ip}:{port}: {e}")
+
 
 def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     """
@@ -74,6 +79,7 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
             controller_slice = colors[start_idx:end_idx]
             packet = build_packet(controller_slice)
             futures.append(executor.submit(send_packet, ip, PORT, packet))
+
 
 def play_video(video_path: str, max_fps: float = None) -> None:
     """
@@ -106,7 +112,7 @@ def play_video(video_path: str, max_fps: float = None) -> None:
         while not stopVideo:
             frame_start_time = time.time()
             ret, frame = cap.read()
-            if not ret:  
+            if not ret:
                 # If the video ended, break to restart from the beginning
                 break
 
@@ -126,12 +132,14 @@ def play_video(video_path: str, max_fps: float = None) -> None:
                 frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
             # Resize frame to 5x4 = (grid_cols x grid_rows)
-            resized_frame = cv.resize(frame, (grid_cols, grid_rows), interpolation=cv.INTER_AREA)
+            resized_frame = cv.resize(
+                frame, (grid_cols, grid_rows), interpolation=cv.INTER_AREA)
 
             # Flatten out the window-colors
             reshaped_frame = resized_frame.reshape(-1, 3)  # shape -> (20, 3)
             # Repeat each color LEDS_PER_WINDOW times -> 20 * 20 = 400
-            full_colors = np.repeat(reshaped_frame, LEDS_PER_WINDOW, axis=0).tolist()
+            full_colors = np.repeat(
+                reshaped_frame, LEDS_PER_WINDOW, axis=0).tolist()
 
             # Make sure length is exactly TOTAL_LEDS
             if len(full_colors) < TOTAL_LEDS:
@@ -155,6 +163,7 @@ def play_video(video_path: str, max_fps: float = None) -> None:
     send_frames(black)
     logging.info("Video playback stopped or finished.")
 
+
 def start_video(videoName: str):
     """
     Starts a background thread that loops the given video indefinitely,
@@ -175,6 +184,7 @@ def start_video(videoName: str):
     # Start a new thread
     video_thread = Thread(target=play_video, args=(video_path,), daemon=True)
     video_thread.start()
+
 
 def stop_video():
     """
@@ -216,22 +226,26 @@ app = FastAPI(
 # We'll keep these for reference, but note that we've switched to 400 total LEDs now.
 LEDS_PER_WINDOW_DEPRECATED: int = 20
 WINDOWS_PER_WLED_DEPRECATED: int = 5
-LEDS_PER_WLED_DEPRECATED: int = LEDS_PER_WINDOW_DEPRECATED * WINDOWS_PER_WLED_DEPRECATED
+LEDS_PER_WLED_DEPRECATED: int = LEDS_PER_WINDOW_DEPRECATED * \
+    WINDOWS_PER_WLED_DEPRECATED
 WLED_IPS_DEPRECATED: Tuple[str, ...] = (
     "192.168.107.123",
     "192.168.107.122",
     "192.168.107.120",
     "192.168.107.121"
 )
-LEDS_IN_MATRIX_DEPRECATED: int = LEDS_PER_WLED_DEPRECATED * len(WLED_IPS_DEPRECATED)
+LEDS_IN_MATRIX_DEPRECATED: int = LEDS_PER_WLED_DEPRECATED * \
+    len(WLED_IPS_DEPRECATED)
 UDP_PORT_DEPRECATED: int = 21324
 
 # We store a global "currentFrame" so that 'update_differences' can patch it
 # and then re-send. This must be 400 LEDs now (matching your new logic).
 currentFrame = ["000000"] * TOTAL_LEDS
 
+
 class ColorMatrix(BaseModel):
     State: List[str]  # Each item is a hex color "RRGGBB"
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -264,7 +278,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     diffs = parts[1].split(b", ")
                     differences = [d.strip(b"()").decode() for d in diffs]
                     # group them in pairs [ (index, color), (index, color), ... ]
-                    differences = [differences[i:i+2] for i in range(0, len(differences), 2)]
+                    differences = [differences[i:i+2]
+                                   for i in range(0, len(differences), 2)]
                     update_differences(differences)
                 case b"videolist":
                     await websocket.send_text(("videos: " + ", ".join(get_video_list())))
@@ -291,10 +306,12 @@ def get_video_list():
                   for v in glob.glob(os.path.join(video_path, "*.mp4"))]
     return video_list
 
+
 @app.get("/status")
 def get_status():
     """Returns the current state (in hex) of the matrix as we've last set it."""
     return {"status": currentFrame}
+
 
 @app.get("/brightness")
 def get_brightness():
@@ -308,7 +325,8 @@ def get_brightness():
             response = requests.get(f"http://{ip}/json")
             if response.status_code == 200:
                 data = response.json()
-                brightness_levels[ip] = data.get("state", {}).get("bri", "Unknown")
+                brightness_levels[ip] = data.get(
+                    "state", {}).get("bri", "Unknown")
             else:
                 brightness_levels[ip] = "Error fetching brightness"
         except Exception as e:
@@ -326,11 +344,13 @@ def setAllColors(color: str):
     We immediately send a single frame update via the new snippet logic.
     """
     if len(color) != 6:
-        raise HTTPException(status_code=400, detail="Color must be 6 hex chars")
+        raise HTTPException(
+            status_code=400, detail="Color must be 6 hex chars")
     global currentFrame
     # Build a 400-length array of the same color
     currentFrame = [color] * TOTAL_LEDS
     send_hex_colors(currentFrame)
+
 
 def update_matrix(colorMatrix: ColorMatrix):
     """
@@ -345,6 +365,7 @@ def update_matrix(colorMatrix: ColorMatrix):
         )
     currentFrame = colorMatrix.State
     send_hex_colors(currentFrame)
+
 
 def update_differences(differences: List[List[str]]):
     """
@@ -398,6 +419,7 @@ def set_brightness(value: int):
             requests.post(f"http://{ip}/json", json=payload)
         except Exception:
             continue
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
