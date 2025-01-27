@@ -96,6 +96,9 @@ def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes).
     Reverses color order first, matching your code snippet.
+
+    Args:
+        colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
     """
     reversed_colors = colors[::-1]
     packet = bytearray()
@@ -107,6 +110,11 @@ def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
 def send_packet(ip: str, port: int, packet: bytes) -> None:
     """
     Sends a UDP packet to a specific WLED controller.
+
+    Args:
+        ip (str): IP address of the WLED controller.
+        port (int): UDP port of the WLED controller.
+        packet (bytes): DRGB packet to send to the controller.
     """
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -119,6 +127,9 @@ def send_packet(ip: str, port: int, packet: bytes) -> None:
 def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     """
     Slices the color array for each controller and sends in parallel.
+
+    Args:
+        colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
         for idx, ip in enumerate(WLED_IPS):
@@ -137,6 +148,10 @@ def handle_piano(controller_idx: int, window_idx: int):
     """
     Lights up exactly one window (20 LEDs) in white for a given controller+window.
     All other LEDs are off (black).
+
+    Args:
+        controller_idx (int): Index of the WLED controller (0-1).
+        window_idx (int): Index of the window (0-WINDOWS_PER_CONTROLLER) on the controller.
     """
     if not (0 <= controller_idx < TOTAL_CONTROLLERS):
         logging.error(f"Invalid controller index: {controller_idx}")
@@ -171,6 +186,10 @@ def play_video(video_path: str, max_fps: float = None):
     Loops the given video until 'stopVideo' is True.
     Each frame is resized to 5x4 (grid_cols x grid_rows),
     then expanded to 400 LEDs and sent to the WLED controllers.
+
+    Args:
+        video_path (str): Path to the video file.
+        max_fps (float): Maximum FPS to cap the video playback.
     """
     global stopVideo
 
@@ -245,6 +264,9 @@ def play_video(video_path: str, max_fps: float = None):
 def start_video(video_name: str):
     """
     Kills any existing video thread, starts a new one looping the given video.
+
+    Args:
+        video_name (str): Name of the video file (without extension).
     """
     global video_thread, stopVideo
 
@@ -303,9 +325,11 @@ def run_christmas_animation():
     Continues this pattern (5 seconds on, 5 seconds off) until 'stopChristmas' is set to True.
     """
     global stopChristmas
-    logging.info("Starting Christmas animation with 0.1s sends, switching frames every 5s.")
+    logging.info(
+        "Starting Christmas animation with 0.1s sends, switching frames every 5s.")
 
-    enabled = True  # Determines which frame to send (True => one pattern, False => alternate)
+    # Determines which frame to send (True => one pattern, False => alternate)
+    enabled = True
 
     while not stopChristmas:
         # Start of a 5-second block
@@ -410,6 +434,9 @@ async def lifespan(app: FastAPI):
     """
     Lifespan event handler for FastAPI application.
     Manages startup and shutdown tasks.
+
+    Args:
+        app (FastAPI): The FastAPI application instance.
     """
     # Startup tasks
     logging.info("Application startup: Initializing background tasks.")
@@ -441,7 +468,64 @@ app = FastAPI(
 )
 
 
-@app.get("/videolist")
+@app.get("/")
+@app.get("/health")
+def health_check():
+    """
+    Health check endpoint to verify if the WLED controllers are reachable.
+    """
+    health_status = {}
+    for ip in WLED_IPS:
+        try:
+            resp = requests.get(f"http://{ip}/json")
+            if resp.status_code == 200:
+                health_status[ip] = "OK"
+            else:
+                health_status[ip] = "Error"
+        except Exception as e:
+            health_status[ip] = f"Error: {e}"
+    return {
+        "health": health_status,
+        "total_controllers": TOTAL_CONTROLLERS,
+        "leds_per_controller": LEDS_PER_CONTROLLER,
+        "windows_per_controller": WINDOWS_PER_CONTROLLER,
+        "leds_per_window": LEDS_PER_WINDOW,
+        "total_leds": TOTAL_LEDS
+    }
+
+
+@app.post("/christmas")
+def christmas_endpoint():
+    """
+    Starts the Christmas animation.
+    """
+    start_christmas()
+    return {"message": "Christmas animation started."}
+
+
+@app.post("/piano/{controller_idx}/{window_idx}")
+def piano_endpoint(controller_idx: int, window_idx: int):
+    """
+    Lights up exactly one window (20 LEDs) in white for a given controller+window.
+    All other LEDs are off (black).
+
+    Args:
+        controller_idx (int): Index of the WLED controller (0-1).
+        window_idx (int): Index of the window (0-WINDOWS_PER_CONTROLLER) on the controller.
+    """
+    if not (0 <= controller_idx < TOTAL_CONTROLLERS):
+        raise HTTPException(
+            status_code=400, detail="Error: Invalid controller index.")
+
+    if not (0 <= window_idx < WINDOWS_PER_CONTROLLER):
+        raise HTTPException(
+            status_code=400, detail="Error: Invalid window index.")
+
+    handle_piano(controller_idx, window_idx)
+    return {"message": f"Piano window {window_idx} on controller {controller_idx} activated."}
+
+
+@app.get("/video")
 def get_video_list():
     """
     Returns the names (without extension) of all .mp4 files in the /videos folder.
@@ -449,6 +533,53 @@ def get_video_list():
     video_dir = os.path.join(os.path.dirname(__file__), "videos")
     files = glob.glob(os.path.join(video_dir, "*.mp4"))
     return [os.path.splitext(os.path.basename(v))[0] for v in files]
+
+
+@app.post("/video/{video_name}")
+def start_video_endpoint(video_name: str):
+    """
+    Starts looping the given video file.
+
+    Args:
+        video_name (str): Name of the video file (without extension).
+    """
+    if not video_name:
+        raise HTTPException(
+            status_code=400, detail="Error: Missing video name.")
+
+    start_video(video_name + ".mp4")
+    return {"message": "Video playback started."}
+
+
+@app.delete("/christmas")
+@app.delete("/piano")
+@app.delete("/video")
+@app.delete("/video/{video_name}")
+def stop_video_endpoint():
+    """
+    Stops any ongoing video playback.
+
+    Args (optional):
+        video_name (str): Name of the video file (without extension).
+    """
+    stop_animation()
+    return {"message": "Video playback stopped."}
+
+
+@app.post("/brightness/{value}")
+def set_brightness_endpoint(value: int):
+    """
+    Sets brightness (0-255) on all WLED controllers.
+
+    Args:
+        value (int): Brightness value between 0 and 255.
+    """
+    if not (0 <= value <= 255):
+        raise HTTPException(
+            status_code=400, detail="Error: Brightness value must be between 0 and 255.")
+
+    set_brightness(value)
+    return {"message": f"Brightness set to {value}."}
 
 
 @app.get("/brightness")
