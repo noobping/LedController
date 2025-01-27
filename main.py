@@ -368,7 +368,8 @@ def start_christmas():
     Starts the Christmas animation in a new thread.
     """
     global christmas_thread, stopChristmas
-    # Stop any previous animation
+    stop_animation()
+
     stopChristmas = False
     christmas_thread = Thread(target=run_christmas_animation, daemon=True)
     christmas_thread.start()
@@ -543,7 +544,8 @@ def start_video_endpoint(video_name: str):
     """
     if not video_name:
         raise HTTPException(status_code=400, detail="Missing video name.")
-
+    
+    stop_animation()
     start_video(video_name + ".mp4")
     return {"message": "Video playback started."}
 
