@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 import logging
 import socket
 import requests
+import uvicorn
 import time
 import os
 import glob
@@ -10,6 +11,7 @@ import numpy as np
 import concurrent.futures
 from threading import Thread
 from typing import List, Tuple
+
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
@@ -348,5 +350,4 @@ def set_brightness(value: int):
 #                          MAIN ENTRY POINT
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=80, reload=False)
