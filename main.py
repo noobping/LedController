@@ -1,5 +1,4 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from threading import Thread
 from typing import List, Tuple
 import asyncio
 import concurrent.futures
@@ -13,6 +12,7 @@ import requests
 import socket
 import time
 import uvicorn
+from threading import Thread
 
 # --------------------------------------------------------------------------------
 #                           LOGGING CONFIGURATION
@@ -83,6 +83,29 @@ WINDOWS_PER_CONTROLLER = 5
 LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20
 TOTAL_CONTROLLERS = len(WLED_IPS)
 TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
+
+# For old “reverse_view” logic:
+REVERSE_VIEW = True
+
+# A global to store the "legacy" color state (400 hex strings)
+# so the old commands remain compatible. Default black: "000000"
+legacy_current_state = ["000000"] * TOTAL_LEDS
+
+# Convert a 6-digit hex string (e.g. "ff8040") to (R, G, B)
+
+
+def hex_to_rgb(h: str) -> Tuple[int, int, int]:
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+# Optionally replicate row-based reversing from the old code,
+# but here's a simpler total reverse if needed:
+
+
+def reverse_legacy_state():
+    if not REVERSE_VIEW:
+        return legacy_current_state
+    return legacy_current_state[::-1]
+
 
 stopVideo = False
 video_thread = None
@@ -199,9 +222,7 @@ def play_video(video_path: str, max_fps: float = None):
             logging.error(f"Failed to open video file: {video_path}")
             return
 
-        fps = cap.get(cv.CAP_PROP_FPS)
-        if fps == 0:
-            fps = 30
+        fps = cap.get(cv.CAP_PROP_FPS) or 30
         if max_fps and fps > max_fps:
             fps = max_fps
             logging.info(f"FPS capped to {fps}")
@@ -235,7 +256,7 @@ def play_video(video_path: str, max_fps: float = None):
             resized_frame = cv.resize(
                 frame, (grid_cols, grid_rows), interpolation=cv.INTER_AREA)
             # Flatten and repeat for LEDS_PER_WINDOW
-            reshaped_frame = resized_frame.reshape(-1, 3)  # shape => (20, 3)
+            reshaped_frame = resized_frame.reshape(-1, 3)
             full_colors = np.repeat(
                 reshaped_frame, LEDS_PER_WINDOW, axis=0).tolist()
 
@@ -280,20 +301,18 @@ def start_video(video_name: str):
     video_thread = Thread(target=play_video, args=(video_path,), daemon=True)
     video_thread.start()
 
-
 # --------------------------------------------------------------------------------
 #                           CHRISTMAS ANIMATION LOGIC
 # --------------------------------------------------------------------------------
 
 
-# Global variables for Christmas animation
 stopChristmas = False
 christmas_thread = None
 
 
 def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
     """
-    Create a fixed red-green pattern with blocks of LEDs each, starting with red or green.
+    Create a fixed red-green pattern with blocks of 20 LEDs each.
 
     Args:
         enabled (bool): If True, start with red blocks; otherwise, start with green.
@@ -301,57 +320,44 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
     Returns:
         List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
     """
-    logging.debug(f"Creating Christmas frame that starts with {
-                  'red' if enabled else 'green'}")
     colors = []
     for i in range(TOTAL_LEDS):
-        block = i // LEDS_PER_WINDOW  # Determine the block index
+        block = i // LEDS_PER_WINDOW
         if enabled:
+            # Even block => Red, Odd => Green
             if block % 2 == 0:
-                colors.append((255, 0, 0))  # Red
+                colors.append((255, 0, 0))
             else:
-                colors.append((0, 255, 0))  # Green
+                colors.append((0, 255, 0))
         else:
+            # Even => Green, Odd => Red
             if block % 2 == 0:
-                colors.append((0, 255, 0))  # Green
+                colors.append((0, 255, 0))
             else:
-                colors.append((255, 0, 0))  # Red
+                colors.append((255, 0, 0))
     return colors
 
 
 def run_christmas_animation():
     """
-    Sends the same frame every 0.1 seconds. After 5 seconds, it toggles to the other frame.
-    Continues this pattern (5 seconds on, 5 seconds off) until 'stopChristmas' is set to True.
+    Toggles every 5 seconds between two frames (red/green swapped).
     """
     global stopChristmas
     logging.info(
         "Starting Christmas animation with 0.1s sends, switching frames every 5s.")
-
-    # Determines which frame to send (True => one pattern, False => alternate)
     enabled = True
 
     while not stopChristmas:
-        # Start of a 5-second block
         block_start = time.monotonic()
-
-        # Send the same frame repeatedly for 5 seconds (unless we stop early)
         while (time.monotonic() - block_start < 5) and not stopChristmas:
-            # Generate the current frame (enabled or disabled)
             colors = make_christmas_frame(enabled)
-
-            # Send the same frame
             send_frames(colors)
-
-            # Sleep 0.1s between sends
             time.sleep(0.1)
-
         if not stopChristmas:
-            # After 5s, toggle to the other frame
             enabled = not enabled
             logging.info(f"Switched to {'Red' if enabled else 'Green'} frame.")
 
-    # Clear LEDs when stopping
+    # Clear on stop
     black = [(0, 0, 0)] * TOTAL_LEDS
     send_frames(black)
     logging.info("Christmas animation stopped and LEDs cleared.")
@@ -359,14 +365,11 @@ def run_christmas_animation():
 
 def start_christmas():
     """
-    Starts the Christmas animation. Stops any ongoing video playback or other animations.
+    Starts the Christmas animation in a new thread.
     """
     global christmas_thread, stopChristmas
-
-    # Reset the stop flag
+    # Stop any previous animation
     stopChristmas = False
-
-    # Start the Christmas animation in a new thread
     christmas_thread = Thread(target=run_christmas_animation, daemon=True)
     christmas_thread.start()
     logging.info("Christmas animation thread started.")
@@ -379,14 +382,14 @@ def stop_animation():
     global stopVideo, video_thread, stopChristmas, christmas_thread
     logging.info("Stopping all ongoing animations.")
 
-    # Stop video playback
+    # Stop video
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
         stopVideo = True
         video_thread.join()
         video_thread = None
 
-    # Stop Christmas animation
+    # Stop Christmas
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
         stopChristmas = True
@@ -399,61 +402,37 @@ def stop_animation():
     logging.info("All animations have been stopped and LEDs cleared.")
 
 # --------------------------------------------------------------------------------
-#                           FASTAPI APPLICATION
+#                          FASTAPI APPLICATION
 # --------------------------------------------------------------------------------
 
 
 description = """
 This API controls WLED-based LED matrices via UDP.  
 It provides:
-- **Video playback** (looping)  
+- **Video playback**  
 - **Brightness** control  
-- **Piano-like** single-window highlighting  
-- **Christmas** themed animation
-
-All commands are sent via either:
-- HTTP GET/POST endpoints for brightness, video list, etc.
-- WebSocket commands (piano, video, stop, brightness, christmas, etc.).
+- **Piano** single-window highlights  
+- **Christmas** animation  
+- **(Legacy) 'setall', 'update', 'difference'** WebSocket commands for backward compatibility.
 """
-
-app = FastAPI(
-    title="LedControllerAPI",
-    summary="API server for controlling WLED lights like a matrix.",
-    description=description,
-    version="0.5.0",
-    contact={
-        "name": "Lucrasoft",
-        "url": "https://www.lucrasoft.nl/",
-        "email": "info@lucrasoft.nl"
-    },
-    lifespan=None
-)
 
 
 async def lifespan(app: FastAPI):
     """
-    Lifespan event handler for FastAPI application.
-    Manages startup and shutdown tasks.
+    Lifespan event handler for startup/shutdown tasks.
 
     Args:
         app (FastAPI): The FastAPI application instance.
     """
-    # Startup tasks
     logging.info("Application startup: Initializing background tasks.")
     asyncio.create_task(transfer_sync_to_async())
     asyncio.create_task(broadcast_logs())
 
-    # Yield control to the application
-    yield
+    yield  # hand over to the application
 
-    # Shutdown tasks
     logging.info("Application shutdown: Cleaning up background tasks.")
-    # If you have any cleanup tasks, they can be added here
-    # For example, stopping animations or closing resources
     stop_animation()
 
-
-# Re-initialize the FastAPI app with the lifespan handler
 app = FastAPI(
     title="LedControllerAPI",
     summary="API server for controlling WLED lights like a matrix.",
@@ -493,11 +472,11 @@ def about():
     """
     return {
         "about": "This API controls WLED-based LED matrices via UDP.",
-        "annimation": {
+        "animation": {
             "video": bool(video_thread and video_thread.is_alive()),
             "christmas": bool(christmas_thread and christmas_thread.is_alive())
         },
-        "connected": len(connected_websockets),
+        "connected_websockets": len(connected_websockets),
         "info": {
             "controllers": {
                 "total": TOTAL_CONTROLLERS,
@@ -516,9 +495,7 @@ def about():
 
 @app.post("/christmas")
 def christmas_endpoint():
-    """
-    Starts the Christmas animation.
-    """
+    """ Starts Christmas animation. """
     start_christmas()
     return {"message": "Christmas animation started."}
 
@@ -535,11 +512,12 @@ def piano_endpoint(controller_idx: int, window_idx: int):
     """
     if not (0 <= controller_idx < TOTAL_CONTROLLERS):
         raise HTTPException(
-            status_code=400, detail="Error: Invalid controller index.")
-
+            status_code=400, detail="Invalid controller index."
+        )
     if not (0 <= window_idx < WINDOWS_PER_CONTROLLER):
         raise HTTPException(
-            status_code=400, detail="Error: Invalid window index.")
+            status_code=400, detail="Invalid window index."
+        )
 
     handle_piano(controller_idx, window_idx)
     return {"message": f"Piano window {window_idx} on controller {controller_idx} activated."}
@@ -548,7 +526,7 @@ def piano_endpoint(controller_idx: int, window_idx: int):
 @app.get("/video")
 def get_video_list():
     """
-    Returns the names (without extension) of all .mp4 files in the /videos folder.
+    Returns names (without extension) of all .mp4 files in the /videos folder.
     """
     video_dir = os.path.join(os.path.dirname(__file__), "videos")
     files = glob.glob(os.path.join(video_dir, "*.mp4"))
@@ -558,14 +536,13 @@ def get_video_list():
 @app.post("/video/{video_name}")
 def start_video_endpoint(video_name: str):
     """
-    Starts looping the given video file.
+    Starts looping the given video file (by name, no extension needed).
 
     Args:
         video_name (str): Name of the video file (without extension).
     """
     if not video_name:
-        raise HTTPException(
-            status_code=400, detail="Error: Missing video name.")
+        raise HTTPException(status_code=400, detail="Missing video name.")
 
     start_video(video_name + ".mp4")
     return {"message": "Video playback started."}
@@ -575,15 +552,12 @@ def start_video_endpoint(video_name: str):
 @app.delete("/piano")
 @app.delete("/video")
 @app.delete("/video/{video_name}")
-def stop_video_endpoint():
+def stop_video_endpoint(video_name: str = None):
     """
-    Stops any ongoing video playback.
-
-    Args (optional):
-        video_name (str): Name of the video file (without extension).
+    Stops any ongoing animation (video or Christmas).
     """
     stop_animation()
-    return {"message": "Video playback stopped."}
+    return {"message": "Animations stopped."}
 
 
 @app.post("/brightness/{value}")
@@ -596,8 +570,7 @@ def set_brightness_endpoint(value: int):
     """
     if not (0 <= value <= 255):
         raise HTTPException(
-            status_code=400, detail="Error: Brightness value must be between 0 and 255.")
-
+            status_code=400, detail="Brightness must be 0..255.")
     set_brightness(value)
     return {"message": f"Brightness set to {value}."}
 
@@ -605,7 +578,7 @@ def set_brightness_endpoint(value: int):
 @app.get("/brightness")
 def get_brightness():
     """
-    Fetches brightness levels from all WLED controllers (by calling their /json endpoint).
+    Fetches brightness levels from all WLED controllers.
     """
     brightness_levels = {}
     for ip in WLED_IPS:
@@ -625,17 +598,24 @@ def get_brightness():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket API supports commands:
-      - "videolist"
-      - "video <videoName>"
-      - "stop"
-      - "brightness <intValue>"
-      - "piano <controller_idx>,<window_idx>"
-      - "christmas"
+    WebSocket commands supported (new style):
+        - "videolist"
+        - "video <videoName>"
+        - "stop"
+        - "brightness <intValue>"
+        - "piano <controller_idx>,<window_idx>"
+        - "christmas"
+
+    Also handles old-style commands:
+        - "setall; <hexColor>"
+        - "update; <hexColor_1>, <hexColor_2>, ..."
+        - "difference; (index, color), (index, color), ...
+        - "videolist;"
+        - "video; <videoName>"
+        - "stop;"
+        - "brightness; <intValue>"
     """
     await websocket.accept()
-
-    # Register this websocket
     connected_websockets.append(websocket)
     logging.info(f"WebSocket connected. Current count: {
                  len(connected_websockets)}")
@@ -643,86 +623,167 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_bytes()
-            parts = data.split(b" ")
-            command = parts[0]
-
-            if command == b"videolist":
-                # Return list of available mp4 files
-                videos = get_video_list()
-                await websocket.send_text("videos: " + ", ".join(videos))
-
-            elif command == b"video":
-                # Start a looping video
-                if len(parts) < 2:
-                    await websocket.send_text("Error: Missing video name.")
-                    continue
-                video_name = parts[1].decode()
-                start_video(video_name + ".mp4")
-                await websocket.send_text("Video playback started.")
-
-            elif command == b"stop":
-                # Stop any ongoing animation
-                stop_animation()
-                await websocket.send_text("All animations stopped.")
-
-            elif command == b"brightness":
-                # Set brightness
-                if len(parts) < 2:
-                    await websocket.send_text("Error: Missing brightness value.")
-                    continue
-                try:
-                    value = int(parts[1])
-                    set_brightness(value)
-                    await websocket.send_text(f"Brightness set to {value}.")
-                except ValueError:
-                    await websocket.send_text("Error: Brightness value must be an integer.")
-                    continue
-
-            elif command == b"piano":
-                # Example: "piano 0,2"
-                if len(parts) < 2:
-                    await websocket.send_text("Error: Missing piano coordinates.")
-                    continue
-                coords = parts[1].decode().split(",")
-                if len(coords) == 2:
+            # We'll handle both new-style (space-separated) and old-style (split on "; ")
+            # So let's see if there's a semicolon approach:
+            if b"; " in data:
+                # old-style approach
+                parts = data.split(b"; ")
+                # e.g. "setall" or "update"
+                command = parts[0].decode("utf-8").lower()
+                arg = parts[1] if len(parts) > 1 else b""
+                # Dispatch old commands
+                if command == "setall":
+                    # Arg is a 6-char hex color
+                    hexcolor = arg.decode("utf-8").strip()
+                    if len(hexcolor) == 6:
+                        for i in range(TOTAL_LEDS):
+                            legacy_current_state[i] = hexcolor
+                        # Convert & send
+                        apply_legacy_state()
+                        await websocket.send_text("OK.")
+                    else:
+                        await websocket.send_text("Error: Invalid hex color.")
+                elif command == "update":
+                    # Arg is a list of 400 hex strings separated by ", "
+                    color_list = arg.split(b", ")
+                    if len(color_list) == TOTAL_LEDS:
+                        for i, c in enumerate(color_list):
+                            legacy_current_state[i] = c.decode("utf-8")
+                        apply_legacy_state()
+                        await websocket.send_text("OK.")
+                    else:
+                        await websocket.send_text(f"Error: Expected {TOTAL_LEDS} hex colors.")
+                elif command == "difference":
+                    # Arg is e.g. "(index, color), (index, color), ..."
+                    # let's parse them
+                    # Example chunk: b"(10, ff00ff), (392, 00ff00)"
+                    # Strategy: split by ", " => each pair of items forms (index, color)
+                    diffs = arg.split(b", ")
+                    # diffs might be ["(10", "ff00ff)", "(392", "00ff00)"] etc.
+                    # We'll pair them up:
+                    if len(diffs) % 2 != 0:
+                        await websocket.send_text("Error: difference data malformed.")
+                    else:
+                        for i in range(0, len(diffs), 2):
+                            idx_str = diffs[i].replace(
+                                b"(", b"").replace(b")", b"")
+                            col_str = diffs[i +
+                                            1].replace(b"(", b"").replace(b")", b"")
+                            try:
+                                idx = int(idx_str)
+                                col = col_str.decode("utf-8")
+                                legacy_current_state[idx] = col
+                            except:
+                                pass
+                        apply_legacy_state()
+                        await websocket.send_text("OK.")
+                elif command == "videolist":
+                    videos = get_video_list()
+                    await websocket.send_text("videos: " + ", ".join(videos))
+                elif command == "video":
+                    video_name = arg.decode("utf-8").strip()
+                    if video_name:
+                        start_video(video_name + ".mp4")
+                        await websocket.send_text("OK.")
+                    else:
+                        await websocket.send_text("Error: missing video name.")
+                elif command == "stop":
+                    stop_animation()
+                    await websocket.send_text("OK.")
+                elif command == "brightness":
                     try:
-                        controller_idx = int(coords[0])
-                        window_idx = int(coords[1])
-                        handle_piano(controller_idx, window_idx)
-                        await websocket.send_text(f"Piano window {window_idx} on controller {controller_idx} activated.")
-                    except ValueError:
-                        await websocket.send_text("Error: Controller and window indices must be integers.")
-                        continue
+                        value = int(arg)
+                        set_brightness(value)
+                        await websocket.send_text("OK.")
+                    except:
+                        await websocket.send_text("Error: brightness value must be integer.")
                 else:
-                    logging.error(
-                        "Invalid piano command format. Expected: 'piano X,Y'")
-                    await websocket.send_text("Error: Invalid piano command format. Expected: 'piano X,Y'")
-
-            elif command == b"christmas":
-                # Start Christmas animation
-                start_christmas()
-                await websocket.send_text("Christmas animation started.")
-
+                    logging.warning(
+                        f"Unknown old-style WebSocket command: {command}")
+                    await websocket.send_text("Error: Unknown old-style command.")
             else:
-                logging.warning(f"Unknown WebSocket command: {
-                                command.decode()}")
-                await websocket.send_text("Error: Unknown command.")
+                # Possibly new-style approach, space-separated
+                parts = data.split(b" ", 1)
+                command = parts[0].decode("utf-8").lower()
 
-            # Confirm
-            await websocket.send_text("OK.")
+                if command == "videolist":
+                    videos = get_video_list()
+                    await websocket.send_text("videos: " + ", ".join(videos))
+
+                elif command == "video":
+                    if len(parts) < 2:
+                        await websocket.send_text("Error: Missing video name.")
+                        continue
+                    video_name = parts[1].decode("utf-8").strip()
+                    start_video(video_name + ".mp4")
+                    await websocket.send_text("Video playback started.")
+
+                elif command == "stop":
+                    stop_animation()
+                    await websocket.send_text("All animations stopped.")
+
+                elif command == "brightness":
+                    if len(parts) < 2:
+                        await websocket.send_text("Error: Missing brightness value.")
+                        continue
+                    try:
+                        value = int(parts[1])
+                        set_brightness(value)
+                        await websocket.send_text(f"Brightness set to {value}.")
+                    except ValueError:
+                        await websocket.send_text("Error: Brightness value must be an integer.")
+
+                elif command == "piano":
+                    # "piano 0,2"
+                    if len(parts) < 2:
+                        await websocket.send_text("Error: Missing piano coords.")
+                        continue
+                    coords = parts[1].split(b",")
+                    if len(coords) == 2:
+                        try:
+                            controller_idx = int(coords[0])
+                            window_idx = int(coords[1])
+                            handle_piano(controller_idx, window_idx)
+                            await websocket.send_text(f"Piano window {window_idx} on controller {controller_idx} activated.")
+                        except ValueError:
+                            await websocket.send_text("Error: Piano coords must be integers.")
+                    else:
+                        await websocket.send_text("Error: Invalid piano command format. Use 'piano X,Y'")
+
+                elif command == "christmas":
+                    start_christmas()
+                    await websocket.send_text("Christmas animation started.")
+                else:
+                    logging.warning(
+                        f"Unknown new-style WebSocket command: {command}")
+                    await websocket.send_text("Error: Unknown command.")
+
     except WebSocketDisconnect:
         logging.info("WebSocket disconnected")
     finally:
-        # Unregister this websocket
         if websocket in connected_websockets:
             connected_websockets.remove(websocket)
-            logging.info(f"WebSocket disconnected. Current count: {
-                         len(connected_websockets)}")
+        logging.info(f"WebSocket disconnected. Current count: {
+                     len(connected_websockets)}")
+
+
+def apply_legacy_state():
+    """
+    Convert the global 'legacy_current_state' (400 hex strings)
+    into a list of (R, G, B), apply reversing if needed,
+    then call send_frames().
+    """
+    # Possibly do row-based reversing if you want to replicate
+    # the old code exactly. For now, a full reverse:
+    reversed_hex = reverse_legacy_state()
+
+    colors = [hex_to_rgb(h) for h in reversed_hex]
+    send_frames(colors)
 
 
 def set_brightness(value: int):
     """
-    Sets brightness (0-255) on all WLED controllers via /json endpoint.
+    Sets brightness on all WLED controllers via /json endpoint.
     """
     payload = {"on": True, "bri": value, "seg": [{"col": [0, 0, 0]}]}
     for ip in WLED_IPS:
@@ -735,37 +796,32 @@ def set_brightness(value: int):
 
 async def transfer_sync_to_async():
     """
-    Asynchronous task to transfer log messages from the synchronous queue
-    to the asynchronous log_queue once the event loop is running.
+    Asynchronous task: move log messages from sync_log_queue => log_queue
+    once the event loop is running.
     """
-    loop = asyncio.get_event_loop()
     while True:
         try:
-            # Retrieve a message from the synchronous queue without blocking indefinitely
             msg = sync_log_queue.get(timeout=0.1)
             await log_queue.put(msg)
         except queue.Empty:
-            await asyncio.sleep(0.1)  # Sleep briefly to prevent tight loop
+            await asyncio.sleep(0.1)
 
 
 async def broadcast_logs():
     """
-    Background task: continually read from log_queue and send to all connected websockets.
+    Reads from log_queue and sends log messages to all connected websockets.
     """
     while True:
-        msg = await log_queue.get()   # Wait until a log message is available
+        msg = await log_queue.get()
         if not connected_websockets:
-            await asyncio.sleep(0.1)  # No clients connected, sleep briefly
+            await asyncio.sleep(0.1)
             continue
         dead_websockets = []
         for ws in connected_websockets:
             try:
                 await ws.send_text(msg)
-            except Exception:
-                # Mark this websocket as dead/disconnected
+            except:
                 dead_websockets.append(ws)
-
-        # Remove the dead websockets
         for ws in dead_websockets:
             if ws in connected_websockets:
                 connected_websockets.remove(ws)
