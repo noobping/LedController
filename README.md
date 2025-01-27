@@ -11,5 +11,5 @@ python ./video.py --video <video> --loop
 For example:
 
 ```bash
-python ./video.py --video ./video.mp4 --loop
+python ./video.py --video ./video/windows_21_dec.mp4 --loop
 ```
