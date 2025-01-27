@@ -416,7 +416,43 @@ app = FastAPI(
         "name": "Lucrasoft",
         "url": "https://www.lucrasoft.nl/",
         "email": "info@lucrasoft.nl"
-    }
+    },
+    lifespan=None
+)
+
+
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler for FastAPI application.
+    Manages startup and shutdown tasks.
+    """
+    # Startup tasks
+    logging.info("Application startup: Initializing background tasks.")
+    asyncio.create_task(transfer_sync_to_async())
+    asyncio.create_task(broadcast_logs())
+
+    # Yield control to the application
+    yield
+
+    # Shutdown tasks
+    logging.info("Application shutdown: Cleaning up background tasks.")
+    # If you have any cleanup tasks, they can be added here
+    # For example, stopping animations or closing resources
+    stop_animation()
+
+
+# Re-initialize the FastAPI app with the lifespan handler
+app = FastAPI(
+    title="LedControllerAPI",
+    summary="API server for controlling WLED lights like a matrix.",
+    description=description,
+    version="0.5.0",
+    contact={
+        "name": "Lucrasoft",
+        "url": "https://www.lucrasoft.nl/",
+        "email": "info@lucrasoft.nl"
+    },
+    lifespan=lifespan
 )
 
 
@@ -599,16 +635,6 @@ async def broadcast_logs():
                 connected_websockets.remove(ws)
                 logging.info(f"Removed dead WebSocket. Current count: {
                              len(connected_websockets)}")
-
-
-@app.on_event("startup")
-async def app_startup():
-    """
-    On startup, spin up the background tasks that transfer
-    log messages and broadcast them to connected websockets.
-    """
-    asyncio.create_task(transfer_sync_to_async())
-    asyncio.create_task(broadcast_logs())
 
 
 if __name__ == "__main__":
