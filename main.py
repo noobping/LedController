@@ -83,6 +83,7 @@ WINDOWS_PER_CONTROLLER = 5
 LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20
 TOTAL_CONTROLLERS = len(WLED_IPS)
 TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
+FRAME_INTERVAL = 5  # seconds
 
 stopVideo = False
 video_thread = None
@@ -168,8 +169,8 @@ def handle_piano(controller_idx: int, window_idx: int):
 
 def play_video(video_path: str, max_fps: float = None):
     """
-    Loops the given video until 'stopVideo' is True.  
-    Each frame is resized to 5x4 (grid_cols x grid_rows),  
+    Loops the given video until 'stopVideo' is True.
+    Each frame is resized to 5x4 (grid_cols x grid_rows),
     then expanded to 400 LEDs and sent to the WLED controllers.
     """
     global stopVideo
@@ -259,13 +260,134 @@ def start_video(video_name: str):
     video_thread.start()
 
 
-def stop_video():
-    """Stops the currently-playing video."""
-    global stopVideo, video_thread
-    stopVideo = True
+# --------------------------------------------------------------------------------
+#                           CHRISTMAS ANIMATION LOGIC
+# --------------------------------------------------------------------------------
+
+
+# Global variables for Christmas animation
+stopChristmas = False
+christmas_thread = None
+
+
+def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
+    """
+    Create a fixed red-green pattern with blocks of LEDs each, starting with red or green.
+
+    Args:
+        enabled (bool): If True, start with red blocks; otherwise, start with green.
+
+    Returns:
+        List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
+    """
+    logging.debug(f"Creating Christmas frame that starts with {
+                  'red' if enabled else 'green'}")
+    colors = []
+    for i in range(TOTAL_LEDS):
+        block = i // LEDS_PER_WINDOW  # Determine the block index
+        if enabled:
+            if block % 2 == 0:
+                colors.append((255, 0, 0))  # Red
+            else:
+                colors.append((0, 255, 0))  # Green
+        else:
+            if block % 2 == 0:
+                colors.append((0, 255, 0))  # Green
+            else:
+                colors.append((255, 0, 0))  # Red
+    return colors
+
+
+def run_christmas_animation():
+    """
+    Runs the Christmas animation by periodically sending frames.
+    """
+    global stopChristmas
+    enabled = False
+    logging.info("Starting Christmas animation.")
+
+    while not stopChristmas:
+        colors = make_christmas_frame(enabled)
+        send_frames(colors)
+        enabled = not enabled  # Toggle the starting color
+        time.sleep(FRAME_INTERVAL)  # Use the FRAME_INTERVAL constant
+
+    # Clear the LEDs when stopping
+    black = [(0, 0, 0)] * TOTAL_LEDS
+    send_frames(black)
+    logging.info("Christmas animation stopped.")
+
+
+def start_christmas():
+    """
+    Starts the Christmas animation. Stops any ongoing video playback or other animations.
+    """
+    global christmas_thread, stopChristmas, video_thread, stopVideo
+
+    # Stop any ongoing video playback
     if video_thread and video_thread.is_alive():
+        logging.info(
+            "Stopping ongoing video playback to start Christmas animation.")
+        stopVideo = True
         video_thread.join()
-    video_thread = None
+        video_thread = None
+
+    # Stop any ongoing Christmas animation
+    if christmas_thread and christmas_thread.is_alive():
+        logging.info("Christmas animation is already running.")
+        return
+
+    # Reset the stop flag
+    stopChristmas = False
+
+    # Start the Christmas animation in a new thread
+    christmas_thread = Thread(target=run_christmas_animation, daemon=True)
+    christmas_thread.start()
+    logging.info("Christmas animation thread started.")
+
+
+def stop_christmas():
+    """
+    Stops the Christmas animation if it's running.
+    """
+    global stopChristmas, christmas_thread
+    if christmas_thread and christmas_thread.is_alive():
+        logging.info("Stopping Christmas animation.")
+        stopChristmas = True
+        christmas_thread.join()
+        christmas_thread = None
+
+    # Clear LEDs after stopping
+    black = [(0, 0, 0)] * TOTAL_LEDS
+    send_frames(black)
+    logging.info("Christmas animation has been stopped and LEDs cleared.")
+
+
+def stop_animation():
+    """
+    Stops any ongoing animations, including video playback and Christmas animation.
+    """
+    global stopVideo, video_thread, stopChristmas, christmas_thread
+    logging.info("Stopping all ongoing animations.")
+
+    # Stop video playback
+    if video_thread and video_thread.is_alive():
+        logging.info("Stopping video playback.")
+        stopVideo = True
+        video_thread.join()
+        video_thread = None
+
+    # Stop Christmas animation
+    if christmas_thread and christmas_thread.is_alive():
+        logging.info("Stopping Christmas animation.")
+        stopChristmas = True
+        christmas_thread.join()
+        christmas_thread = None
+
+    # Clear LEDs after stopping
+    black = [(0, 0, 0)] * TOTAL_LEDS
+    send_frames(black)
+    logging.info("All animations have been stopped and LEDs cleared.")
 
 # --------------------------------------------------------------------------------
 #                           FASTAPI APPLICATION
@@ -278,17 +400,18 @@ It provides:
 - **Video playback** (looping)  
 - **Brightness** control  
 - **Piano-like** single-window highlighting  
+- **Christmas** themed animation
 
 All commands are sent via either:
-- HTTP GET endpoints for brightness, video list, etc.
-- WebSocket commands (piano, video, stop, brightness, etc.).
+- HTTP GET/POST endpoints for brightness, video list, etc.
+- WebSocket commands (piano, video, stop, brightness, christmas, etc.).
 """
 
 app = FastAPI(
     title="LedControllerAPI",
     summary="API server for controlling WLED lights like a matrix.",
     description=description,
-    version="0.4.0",
+    version="0.5.0",
     contact={
         "name": "Lucrasoft",
         "url": "https://www.lucrasoft.nl/",
@@ -336,6 +459,7 @@ async def websocket_endpoint(websocket: WebSocket):
       - "stop"
       - "brightness <intValue>"
       - "piano <controller_idx>,<window_idx>"
+      - "christmas"
     """
     await websocket.accept()
 
@@ -362,10 +486,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
                 video_name = parts[1].decode()
                 start_video(video_name + ".mp4")
+                await websocket.send_text("Video playback started.")
 
             elif command == b"stop":
-                # Stop looping video
-                stop_video()
+                # Stop any ongoing animation
+                stop_animation()
+                await websocket.send_text("All animations stopped.")
 
             elif command == b"brightness":
                 # Set brightness
@@ -375,6 +501,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     value = int(parts[1])
                     set_brightness(value)
+                    await websocket.send_text(f"Brightness set to {value}.")
                 except ValueError:
                     await websocket.send_text("Error: Brightness value must be an integer.")
                     continue
@@ -390,6 +517,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         controller_idx = int(coords[0])
                         window_idx = int(coords[1])
                         handle_piano(controller_idx, window_idx)
+                        await websocket.send_text(f"Piano window {window_idx} on controller {controller_idx} activated.")
                     except ValueError:
                         await websocket.send_text("Error: Controller and window indices must be integers.")
                         continue
@@ -397,6 +525,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     logging.error(
                         "Invalid piano command format. Expected: 'piano X,Y'")
                     await websocket.send_text("Error: Invalid piano command format. Expected: 'piano X,Y'")
+
+            elif command == b"christmas":
+                # Start Christmas animation
+                start_christmas()
+                await websocket.send_text("Christmas animation started.")
 
             else:
                 logging.warning(f"Unknown WebSocket command: {
