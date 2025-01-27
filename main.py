@@ -485,12 +485,25 @@ def health_check():
         except Exception as e:
             health_status[ip] = f"Error: {e}"
     return {
-        "health": health_status,
-        "total_controllers": TOTAL_CONTROLLERS,
-        "leds_per_controller": LEDS_PER_CONTROLLER,
-        "windows_per_controller": WINDOWS_PER_CONTROLLER,
-        "leds_per_window": LEDS_PER_WINDOW,
-        "total_leds": TOTAL_LEDS
+        "about": "This API controls WLED-based LED matrices via UDP.",
+        "annimation": {
+            "video": bool(video_thread and video_thread.is_alive()),
+            "christmas": bool(christmas_thread and christmas_thread.is_alive())
+        },
+        "connected": len(connected_websockets),
+        "info": {
+            "controllers": {
+                "total": TOTAL_CONTROLLERS,
+                "ips": health_status,
+                "port": PORT,
+                "windows_per_controller": WINDOWS_PER_CONTROLLER
+            },
+            "leds": {
+                "total": TOTAL_LEDS,
+                "per_controller": LEDS_PER_CONTROLLER,
+                "per_window": LEDS_PER_WINDOW
+            }
+        }
     }
 
 
