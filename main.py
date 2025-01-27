@@ -1,17 +1,18 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-import logging
-import socket
-import requests
-import uvicorn
-import time
-import os
-import glob
-import cv2 as cv
-import numpy as np
-import concurrent.futures
 from threading import Thread
 from typing import List, Tuple
 import asyncio
+import concurrent.futures
+import cv2 as cv
+import glob
+import logging
+import numpy as np
+import os
+import queue
+import requests
+import socket
+import time
+import uvicorn
 
 # --------------------------------------------------------------------------------
 #                           LOGGING CONFIGURATION
@@ -20,27 +21,29 @@ import asyncio
 # List to keep track of connected WebSocket clients
 connected_websockets: List[WebSocket] = []
 
-# Asynchronous queue to hold log messages
+# Asynchronous queue to hold log messages for broadcasting
 log_queue = asyncio.Queue()
+
+# Synchronous queue to buffer log messages before the event loop starts
+sync_log_queue = queue.Queue()
 
 
 class WebSocketLogHandler(logging.Handler):
     """
-    Custom logging handler that sends log records to an asyncio.Queue.
+    Custom logging handler that sends log records to a synchronous queue.
     """
 
     def __init__(self, level=logging.NOTSET):
         super().__init__(level=level)
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Send the log record's message into an asyncio queue."""
+        """Send the log record's message into a synchronous queue."""
         msg = self.format(record)
         try:
-            # Use asyncio.run_coroutine_threadsafe to enqueue log messages from any thread
-            asyncio.run_coroutine_threadsafe(
-                log_queue.put(msg), asyncio.get_event_loop())
-        except RuntimeError:
-            # Event loop might not be running yet
+            sync_log_queue.put_nowait(msg)
+        except queue.Full:
+            # Handle full queue scenario if needed
+            logging.warning("Log queue is full. Dropping log message.")
             pass
 
 
@@ -88,6 +91,7 @@ video_thread = None
 #                           LOW-LEVEL LED LOGIC
 # --------------------------------------------------------------------------------
 
+
 def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes).
@@ -128,6 +132,7 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
 #                         PIANO LOGIC (VIA WEBSOCKET)
 # --------------------------------------------------------------------------------
 
+
 def handle_piano(controller_idx: int, window_idx: int):
     """
     Lights up exactly one window (20 LEDs) in white for a given controller+window.
@@ -159,6 +164,7 @@ def handle_piano(controller_idx: int, window_idx: int):
 # --------------------------------------------------------------------------------
 #                         VIDEO PLAYBACK LOGIC
 # --------------------------------------------------------------------------------
+
 
 def play_video(video_path: str, max_fps: float = None):
     """
@@ -264,6 +270,7 @@ def stop_video():
 # --------------------------------------------------------------------------------
 #                           FASTAPI APPLICATION
 # --------------------------------------------------------------------------------
+
 
 description = """
 This API controls WLED-based LED matrices via UDP.  
@@ -421,11 +428,30 @@ def set_brightness(value: int):
             logging.error(f"Failed to set brightness on {ip}: {e}")
 
 
+async def transfer_sync_to_async():
+    """
+    Asynchronous task to transfer log messages from the synchronous queue
+    to the asynchronous log_queue once the event loop is running.
+    """
+    loop = asyncio.get_event_loop()
+    while True:
+        try:
+            # Retrieve a message from the synchronous queue without blocking indefinitely
+            msg = sync_log_queue.get(timeout=0.1)
+            await log_queue.put(msg)
+        except queue.Empty:
+            await asyncio.sleep(0.1)  # Sleep briefly to prevent tight loop
+
+
 async def broadcast_logs():
-    """Background task: continually read from log_queue and send to all websockets."""
+    """
+    Background task: continually read from log_queue and send to all connected websockets.
+    """
     while True:
         msg = await log_queue.get()   # Wait until a log message is available
-        # Broadcast this `msg` to all connected websockets
+        if not connected_websockets:
+            await asyncio.sleep(0.1)  # No clients connected, sleep briefly
+            continue
         dead_websockets = []
         for ws in connected_websockets:
             try:
@@ -445,9 +471,10 @@ async def broadcast_logs():
 @app.on_event("startup")
 async def app_startup():
     """
-    On startup, spin up the background task that forwards
-    all log messages from the queue to the connected websockets.
+    On startup, spin up the background tasks that transfer
+    log messages and broadcast them to connected websockets.
     """
+    asyncio.create_task(transfer_sync_to_async())
     asyncio.create_task(broadcast_logs())
 
 
