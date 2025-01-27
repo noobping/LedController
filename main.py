@@ -300,17 +300,37 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
 
 def run_christmas_animation():
     """
-    Runs the Christmas animation by sending the same frame every 5 seconds.
+    Runs the Christmas animation by alternating between two frames every 5 counts.
+    Each frame is held for FRAME_INTERVAL seconds before switching.
     """
     global stopChristmas
-    logging.info("Starting Christmas animation with a single frame.")
+    logging.info(
+        "Starting Christmas animation with alternating frames every 5 counts.")
 
-    # Create the desired frame once
-    colors = make_christmas_frame(enabled=True)  # Set 'enabled' as needed
+    counter = 0  # Initialize the counter
+    enabled = False  # Determines which frame to send
 
     while not stopChristmas:
+        # Generate the current frame based on the 'enabled' flag
+        colors = make_christmas_frame(enabled)
         send_frames(colors)
-        time.sleep(FRAME_INTERVAL)  # Hold the frame for 5 seconds
+        logging.debug(f"Sent frame {'Enabled' if enabled else 'Disabled'}. Counter: {
+                      counter + 1}/{FRAME_INTERVAL}")
+
+        time.sleep(1)  # Sleep for 1 second
+        counter += 1  # Increment the counter
+
+        if counter >= FRAME_INTERVAL:
+            # Switch frames after 5 counts
+            enabled = not enabled
+            counter = 0  # Reset the counter
+            logging.info(f"Switched to {
+                         'Enabled' if enabled else 'Disabled'} frame.")
+
+    # Clear the LEDs when stopping
+    black = [(0, 0, 0)] * TOTAL_LEDS
+    send_frames(black)
+    logging.info("Christmas animation stopped and LEDs cleared.")
 
 
 def start_christmas():
@@ -318,19 +338,6 @@ def start_christmas():
     Starts the Christmas animation. Stops any ongoing video playback or other animations.
     """
     global christmas_thread, stopChristmas, video_thread, stopVideo
-
-    # Stop any ongoing video playback
-    if video_thread and video_thread.is_alive():
-        logging.info(
-            "Stopping ongoing video playback to start Christmas animation.")
-        stopVideo = True
-        video_thread.join()
-        video_thread = None
-
-    # Stop any ongoing Christmas animation
-    if christmas_thread and christmas_thread.is_alive():
-        logging.info("Christmas animation is already running.")
-        return
 
     # Reset the stop flag
     stopChristmas = False
