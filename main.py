@@ -694,7 +694,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     for item in data_field:
                         try:
                             idx = int(item.get("index"))
+                            # Adjust index so that differences are applied to the proper element
+                            # (the physical LED ordering) when REVERSE_VIEW is enabled.
+                            if REVERSE_VIEW:
+                                idx = TOTAL_LEDS - 1 - idx
                             col = str(item.get("color"))
+                            logger.debug(f"Setting index {idx} to color {col}")
                             legacy_current_state[idx] = col
                         except Exception:
                             continue
