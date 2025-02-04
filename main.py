@@ -889,9 +889,6 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
 #  Main WebSocket endpoint: supports both legacy (bytes) and JSON (text) messages
 # =============================================================================
 
-app = FastAPI()
-
-
 @app.websocket("/ws")
 async def ws_main(websocket: WebSocket):
     """
@@ -999,4 +996,4 @@ async def broadcast_logs():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8901, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8901, reload=True)
