@@ -644,9 +644,9 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            if "; " in data:
+            if ";" in data:
                 # old-style
-                parts = data.split("; ")
+                parts = data.split(";")
                 # e.g. "setall" of "update"
                 command = parts[0].lower()
                 arg = parts[1] if len(parts) > 1 else ""
