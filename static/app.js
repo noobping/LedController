@@ -58,7 +58,7 @@ createApp({
                     } else if (incoming.includes("DEBUG")) {
                         messageType = "debug";
                     }
-                    messages.value.push({ text: "Received: " + JSON.stringify(incoming), type: messageType });
+                    messages.value.push({ text: incoming.error !== undefined ? incoming.error : JSON.stringify(incoming), type: messageType });
                 } catch (e) {
                     // If the message isn't valid JSON, inspect the raw string.
                     const dataLower = event.data.toLowerCase();
