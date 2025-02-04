@@ -1,5 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from threading import Thread
 from typing import List, Tuple
 import asyncio
@@ -451,19 +452,14 @@ app = FastAPI(
 )
 
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @app.get("/")
-async def index():
+def root():
     """
-    Default web page.
+    Return index.html for the root path.
     """
-    # Determine the path to the index.html file
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(current_dir, "index.html")
-
-    # Check if the file exists
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="index.html not found")
-
+    file_path = os.path.join("static", "index.html")
     return FileResponse(file_path)
 
 

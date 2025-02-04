@@ -1,0 +1,151 @@
+html,
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+
+    --background-color: #f9f9f9;
+    --text-color: #000;
+    --border-color: #ccc;
+    --button-bg: #4caf50;
+    --button-hover-bg: #45a049;
+    --input-bg: #fff;
+    --suggestion-bg: #fff;
+    --suggestion-hover-bg: #f1f1f1;
+    --info: #272727;
+    --warning: #ff9800;
+    --error: #f44336;
+    --command: #3f51b5;
+}
+
+@media (prefers-color-scheme: dark) {
+
+    html,
+    body {
+        --background-color: #1e1e1e;
+        --text-color: #ffffff;
+        --border-color: #555;
+        --button-bg: #388e3c;
+        --button-hover-bg: #2e7d32;
+        --input-bg: #2c2c2c;
+        --suggestion-bg: #2c2c2c;
+        --suggestion-hover-bg: #3c3c3c;
+        --info: #ddd;
+        --warning: #fca421;
+        --error: #f44336;
+        --command: #5e72e2;
+    }
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    margin: 0 auto;
+    padding: 0.5em;
+    box-sizing: border-box;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+* {
+    font-size: 1em;
+}
+
+.output {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1em;
+    border: 1px solid var(--border-color);
+    padding: 0.5em;
+    overflow-y: auto;
+    background-color: var(--background-color);
+    border-radius: 0.5em;
+}
+
+.messages {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    height: 100%;
+}
+
+.command-prompt {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.input-container {
+    display: flex;
+}
+
+input[type="text"] {
+    flex: 1;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    margin-left: 10px;
+    border: none;
+    background-color: var(--button-bg);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: var(--button-hover-bg);
+}
+
+.suggestions {
+    position: absolute;
+    bottom: 50px;
+    left: 0;
+    right: 0;
+    border: 1px solid var(--border-color);
+    margin-top: 5px;
+    padding: 0;
+    list-style: none;
+    max-height: 150px;
+    overflow-y: auto;
+    background-color: var(--suggestion-bg);
+    z-index: 1000;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.suggestions li {
+    padding: 10px;
+    cursor: pointer;
+    color: var(--text-color);
+}
+
+.suggestions li.selected,
+.suggestions li:hover {
+    background-color: var(--suggestion-hover-bg);
+}
+
+/* Message Types */
+.info {
+    color: var(--info);
+}
+
+.warning {
+    color: var(--warning);
+}
+
+.error {
+    color: var(--error);
+}
+
+.command {
+    color: var(--command);
+}
