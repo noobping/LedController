@@ -182,8 +182,10 @@ def handle_piano(controller_idx: int, window_idx: int):
 #                         VIDEO PLAYBACK LOGIC
 # --------------------------------------------------------------------------------
 
+
 stopVideo = False
 video_thread = None
+
 
 def play_video(video_path: str, max_fps: float = None):
     """
@@ -286,8 +288,10 @@ def start_video(video_name: str):
 #                           CHRISTMAS ANIMATION LOGIC
 # --------------------------------------------------------------------------------
 
+
 stopChristmas = False
 christmas_thread = None
+
 
 def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
     """
@@ -392,6 +396,7 @@ def start_legacy_sender():
 # --------------------------------------------------------------------------------
 #                           STOP ANIMATION LOGIC
 # --------------------------------------------------------------------------------
+
 
 def stop_animation():
     """
@@ -635,126 +640,247 @@ async def get_brightness():
     return {"brightness": brightness_levels}
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+# =============================================================================
+#  Helpers: Legacy functions & globals
+# =============================================================================
+
+# (Assume these functions and globals exist elsewhere in your code.)
+# For example, you might already have these from your old implementation:
+#   - setAllColors(color: str)
+#   - update_matrix_legacy(colors: List[str])
+#   - update_differences(diff_list: List[List[str]])
+#   - get_video_list() -> List[str]
+#   - start_video(video_name: str)
+#   - stop_animation()
+#   - set_brightness(value: int)
+#   - handle_piano(controller_idx: int, window_idx: int)
+#   - start_christmas()
+#
+# In the new code you already have many of these, but note that the
+# “legacy” update (and difference) commands now use the same underlying LED update
+# functions, so feel free to refactor if you wish.
+
+# =============================================================================
+#  Legacy API handler (byte-based commands)
+# =============================================================================
+
+
+async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
     """
-    WebSocket endpoints.
+    Process legacy API commands sent as bytes.
+    Expected format (example): b"update; <data>" or b"setall; <data>"
+    """
+    try:
+        # Split the incoming data on the first occurrence of b"; "
+        parts = data.split(b"; ", 1)
+        if len(parts) != 2:
+            await websocket.send_text("Error: Invalid command format (missing separator).")
+            return
+
+        command = parts[0].strip()
+        payload = parts[1].strip()
+
+        if command == b"setall":
+            # Expect payload: a 6-character hex string (e.g. "ff8040")
+            color_str = payload.decode()
+            if len(color_str) != 6:
+                await websocket.send_text("Error: Color must be a 6-digit hex string.")
+                return
+            setAllColors(color_str)
+
+        elif command == b"update":
+            # Expect payload: a comma‐separated list of hex strings
+            colors = payload.split(b", ")
+            if len(colors) != TOTAL_LEDS:
+                await websocket.send_text(f"Error: Expected {TOTAL_LEDS} colors but got {len(colors)}.")
+                return
+            # Convert each byte string to a regular string (hex color)
+            color_list = [c.decode() for c in colors]
+            update_matrix_legacy(color_list)
+
+        elif command == b"difference":
+            # Expect payload: comma–separated pairs; for example:
+            # b"(23, ff8040), (45, 00ff00), ..."
+            # For simplicity, we assume that the payload is formatted as:
+            # b"23, ff8040, 45, 00ff00" (i.e. pairs separated by comma and space)
+            parts = payload.split(b", ")
+            if len(parts) % 2 != 0:
+                await websocket.send_text("Error: Difference command data malformed (odd number of items).")
+                return
+            diff_list = []
+            for i in range(0, len(parts), 2):
+                index = parts[i].decode().strip("()")
+                color = parts[i+1].decode().strip("()")
+                diff_list.append([index, color])
+            update_differences(diff_list)
+
+        elif command == b"videolist":
+            videos = get_video_list()
+            await websocket.send_text("videos: " + ", ".join(videos))
+            return
+
+        elif command == b"video":
+            video_name = payload.decode().strip()
+            if not video_name:
+                await websocket.send_text("Error: Missing video name.")
+                return
+            # In your legacy implementation you might need to add the extension.
+            start_video(video_name)
+
+        elif command == b"stop":
+            stop_animation()
+
+        elif command == b"brightness":
+            try:
+                brightness_value = int(payload.decode())
+            except ValueError:
+                await websocket.send_text("Error: Brightness must be an integer.")
+                return
+            set_brightness(brightness_value)
+
+        else:
+            logging.warning("Unknown legacy command: " + command.decode())
+            await websocket.send_text("Unknown legacy command.")
+            return
+
+        # Acknowledge command processing.
+        await websocket.send_text("OK.")
+
+    except Exception as e:
+        logging.error(f"Error processing legacy command: {e}")
+        await websocket.send_text("Error processing legacy command.")
+
+# =============================================================================
+#  JSON API handler
+# =============================================================================
+
+
+async def ws_json_api(websocket: WebSocket, data: str) -> None:
+    """
+    Process JSON API commands sent as text.
+    Expected JSON format: {"command": "setall", "data": ...}
+    """
+    try:
+        msg = json.loads(data)
+    except json.JSONDecodeError:
+        await websocket.send_text(json.dumps({"error": "Invalid JSON"}))
+        return
+
+    command = msg.get("command", "").lower()
+    data_field = msg.get("data")
+
+    if command == "videolist":
+        videos = get_video_list()
+        await websocket.send_text(json.dumps({"videos": videos}))
+
+    elif command == "video":
+        if data_field is None or str(data_field).strip() == "":
+            await websocket.send_text(json.dumps({"error": "Missing video name"}))
+        else:
+            video_name = str(data_field).strip()
+            stop_animation()
+            start_video(video_name)
+            await websocket.send_text(json.dumps({"status": "Video playback started"}))
+
+    elif command == "stop":
+        stop_animation()
+        await websocket.send_text(json.dumps({"status": "All animations stopped"}))
+
+    elif command == "brightness":
+        try:
+            brightness_value = int(data_field)
+            set_brightness(brightness_value)
+            await websocket.send_text(json.dumps({"status": f"Brightness set to {brightness_value}"}))
+        except (ValueError, TypeError):
+            await websocket.send_text(json.dumps({"error": "Brightness value must be an integer"}))
+
+    elif command == "piano":
+        if not (isinstance(data_field, dict) and "controller" in data_field and "window" in data_field):
+            await websocket.send_text(json.dumps({
+                "error": "Invalid piano command format. Use: {\"controller\": x, \"window\": y}"
+            }))
+        else:
+            try:
+                controller_idx = int(data_field["controller"])
+                window_idx = int(data_field["window"])
+                handle_piano(controller_idx, window_idx)
+                await websocket.send_text(json.dumps({
+                    "status": f"Piano window {window_idx} on controller {controller_idx} activated"
+                }))
+            except ValueError:
+                await websocket.send_text(json.dumps({"error": "Piano coordinates must be integers"}))
+
+    elif command == "christmas":
+        start_christmas()
+        await websocket.send_text(json.dumps({"status": "Christmas animation started"}))
+
+    else:
+        logging.warning(f"Unknown JSON command: {command}")
+        await websocket.send_text(json.dumps({"error": "Unknown command"}))
+
+# =============================================================================
+#  Main WebSocket endpoint: supports both legacy (bytes) and JSON (text) messages
+# =============================================================================
+
+app = FastAPI()
+
+
+@app.websocket("/ws")
+async def ws_main(websocket: WebSocket):
+    """
+    The unified WebSocket endpoint that accepts both legacy byte messages and
+    JSON messages.
+
+    If a received message contains bytes then it is dispatched to the legacy API handler.
+    If a text message is received, it is assumed to be JSON and is dispatched accordingly.
     """
     await websocket.accept()
-    connected_websockets.append(websocket)
-    logging.info(f"WebSocket connected. Current count: {len(connected_websockets)}")
-
     try:
         while True:
-            raw_data = await websocket.receive_text()
-            try:
-                msg = json.loads(raw_data)
-                logging.debug(f"Received WebSocket message: {msg}")
-            except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"error": "Invalid JSON"}))
-                continue
-
-            command = msg.get("command", "").lower()
-            data_field = msg.get("data")
-
-            if command == "setall":
-                # Build a frame where every LED gets the same color.
-                hexcolor = str(data_field).strip() if data_field is not None else ""
-                if len(hexcolor) == 6:
-                    current_legacy_frame = [hex_to_rgb(hexcolor)] * TOTAL_LEDS
-                    start_legacy_sender()
-                    await websocket.send_text(json.dumps({"status": "OK"}))
-                else:
-                    await websocket.send_text(json.dumps({"error": "Invalid hex color"}))
-
-            elif command == "update":
-                # Expect a full frame: a list of 400 hex color strings.
-                if isinstance(data_field, list) and len(data_field) == TOTAL_LEDS:
-                    try:
-                        current_legacy_frame = [hex_to_rgb(str(c)) for c in data_field]
-                        start_legacy_sender()
-                        await websocket.send_text(json.dumps({"status": "OK"}))
-                    except Exception as e:
-                        logging.error(f"Error processing update: {e}")
-                        await websocket.send_text(json.dumps({"error": "Error processing update command"}))
-                else:
-                    await websocket.send_text(json.dumps({"error": f"Expected {TOTAL_LEDS} hex colors"}))
-
-            elif command == "difference":
-                # Build a blank (black) frame and update only the specified indices.
-                if isinstance(data_field, list):
-                    frame = [(0, 0, 0)] * TOTAL_LEDS
-                    for item in data_field:
-                        try:
-                            idx = int(item.get("index"))
-                            hexcolor = str(item.get("color")).strip()
-                            if len(hexcolor) != 6:
-                                logging.error(f"Invalid hex color '{hexcolor}' for index {idx}")
-                                continue
-                            logging.debug(f"Setting index {idx} to color {hexcolor}")
-                            frame[idx] = hex_to_rgb(hexcolor)
-                        except Exception as e:
-                            logging.error(f"Error processing difference item {item}: {e}")
-                    current_legacy_frame = frame
-                    start_legacy_sender()
-                    await websocket.send_text(json.dumps({"status": "OK"}))
-                else:
-                    await websocket.send_text(json.dumps({"error": "difference data malformed"}))
-
-            elif command == "videolist":
-                videos = get_video_list()
-                await websocket.send_text(json.dumps({"videos": videos}))
-
-            elif command == "video":
-                if data_field is None or str(data_field).strip() == "":
-                    await websocket.send_text(json.dumps({"error": "Missing video name"}))
-                else:
-                    video_name = str(data_field).strip()
-                    stop_animation()
-                    start_video(video_name + ".mp4")
-                    await websocket.send_text(json.dumps({"status": "Video playback started"}))
-
-            elif command == "stop":
-                stop_animation()
-                await websocket.send_text(json.dumps({"status": "All animations stopped"}))
-
-            elif command == "brightness":
-                try:
-                    value = int(data_field)
-                    set_brightness(value)
-                    await websocket.send_text(json.dumps({"status": f"Brightness set to {value}"}))
-                except (ValueError, TypeError):
-                    await websocket.send_text(json.dumps({"error": "Brightness value must be an integer"}))
-
-            elif command == "piano":
-                if not (isinstance(data_field, dict) and "controller" in data_field and "window" in data_field):
-                    await websocket.send_text(json.dumps({
-                        "error": "Invalid piano command format. Use: {\"controller\": x, \"window\": y}"
-                    }))
-                else:
-                    try:
-                        controller_idx = int(data_field["controller"])
-                        window_idx = int(data_field["window"])
-                        handle_piano(controller_idx, window_idx)
-                        await websocket.send_text(json.dumps({
-                            "status": f"Piano window {window_idx} on controller {controller_idx} activated"
-                        }))
-                    except ValueError:
-                        await websocket.send_text(json.dumps({"error": "Piano coords must be integers"}))
-
-            elif command == "christmas":
-                start_christmas()
-                await websocket.send_text(json.dumps({"status": "Christmas animation started"}))
-
+            message = await websocket.receive()
+            # Check if we got a bytes message (legacy) or text (JSON)
+            if "bytes" in message and message["bytes"] is not None:
+                await ws_legacy_api(websocket, message["bytes"])
+            elif "text" in message and message["text"] is not None:
+                await ws_json_api(websocket, message["text"])
             else:
-                logging.warning(f"Unknown WebSocket command: {command}")
-                await websocket.send_text(json.dumps({"error": "Unknown command"}))
+                await websocket.send_text("Error: Invalid message format.")
     except WebSocketDisconnect:
-        logging.info("WebSocket disconnected")
-    finally:
-        if websocket in connected_websockets:
-            connected_websockets.remove(websocket)
-        logging.info(f"WebSocket disconnected. Current count: {len(connected_websockets)}")
+        logging.info("WebSocket disconnected in ws_main.")
+
+# =============================================================================
+#  Separate endpoints for legacy and JSON clients
+# =============================================================================
+
+@app.websocket("/ws/legacy")
+async def ws_legacy_endpoint(websocket: WebSocket):
+    """
+    A dedicated endpoint for legacy clients that send raw bytes.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive()
+            if "bytes" in message and message["bytes"] is not None:
+                await ws_legacy_api(websocket, message["bytes"])
+            else:
+                await websocket.send_text("Error: This endpoint accepts only byte messages.")
+    except WebSocketDisconnect:
+        logging.info("WebSocket legacy endpoint disconnected.")
+
+
+@app.websocket("/ws/json")
+async def ws_json_endpoint(websocket: WebSocket):
+    """
+    A dedicated endpoint for JSON clients.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive_text()
+            await ws_json_api(websocket, message)
+    except WebSocketDisconnect:
+        logging.info("WebSocket JSON endpoint disconnected.")
 
 
 def set_brightness(value: int):
