@@ -55,10 +55,16 @@ createApp({
                     // Check for error or debug properties in the JSON payload.
                     if (incoming.error !== undefined) {
                         messageType = "error";
+                    } else if (incoming.status !== undefined) {
+                        messageType = "status";
                     } else if (incoming.includes("DEBUG")) {
                         messageType = "debug";
                     }
-                    messages.value.push({ text: incoming.error !== undefined ? incoming.error : JSON.stringify(incoming), type: messageType });
+                    messages.value.push({
+                        text: incoming.error !== undefined ? incoming.error :
+                            (incoming.status !== undefined ? incoming.status : JSON.stringify(incoming)),
+                        type: messageType
+                    });
                 } catch (e) {
                     // If the message isn't valid JSON, inspect the raw string.
                     const dataLower = event.data.toLowerCase();
