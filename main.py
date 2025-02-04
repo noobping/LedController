@@ -53,7 +53,7 @@ class WebSocketLogHandler(logging.Handler):
 
 # Configure the root logger
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # Remove existing handlers to prevent duplicate logs
 logger.handlers = []
@@ -662,6 +662,7 @@ async def websocket_endpoint(websocket: WebSocket):
             raw_data = await websocket.receive_text()
             try:
                 msg = json.loads(raw_data)
+                logger.debug(f"Received WebSocket message: {msg}")
             except json.JSONDecodeError:
                 await websocket.send_text(json.dumps({"error": "Invalid JSON"}))
                 continue
