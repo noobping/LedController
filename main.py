@@ -88,31 +88,9 @@ LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20
 TOTAL_CONTROLLERS = len(WLED_IPS)
 TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
 
-# For old “reverse_view” logic:
-REVERSE_VIEW = True
-
-# A global to store the "legacy" color state (400 hex strings)
-# so the old commands remain compatible. Default black: "000000"
-legacy_current_state = ["000000"] * TOTAL_LEDS
-
 # Convert a 6-digit hex string (e.g. "ff8040") to (R, G, B)
-
-
 def hex_to_rgb(h: str) -> Tuple[int, int, int]:
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-
-# Optionally replicate row-based reversing from the old code,
-# but here's a simpler total reverse if needed:
-
-
-def reverse_legacy_state():
-    if not REVERSE_VIEW:
-        return legacy_current_state
-    return legacy_current_state[::-1]
-
-
-stopVideo = False
-video_thread = None
 
 # --------------------------------------------------------------------------------
 #                           LOW-LEVEL LED LOGIC
@@ -207,6 +185,8 @@ def handle_piano(controller_idx: int, window_idx: int):
 #                         VIDEO PLAYBACK LOGIC
 # --------------------------------------------------------------------------------
 
+stopVideo = False
+video_thread = None
 
 def play_video(video_path: str, max_fps: float = None):
     """
@@ -309,10 +289,8 @@ def start_video(video_name: str):
 #                           CHRISTMAS ANIMATION LOGIC
 # --------------------------------------------------------------------------------
 
-
 stopChristmas = False
 christmas_thread = None
-
 
 def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
     """
@@ -453,6 +431,7 @@ app = FastAPI(
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/")
 def root():
@@ -617,41 +596,7 @@ async def get_brightness():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket commands are exchanged in JSON.
-    Expected JSON format examples:
-      {
-         "command": "setall",
-         "data": "ff00ff"
-      }
-      {
-         "command": "update",
-         "data": ["ff00ff", "00ff00", ...]
-      }
-      {
-         "command": "difference",
-         "data": [{"index": 10, "color": "ff00ff"}, {"index":392, "color": "00ff00"}]
-      }
-      {
-         "command": "videolist"
-      }
-      {
-         "command": "video",
-         "data": "videoName"
-      }
-      {
-         "command": "stop"
-      }
-      {
-         "command": "brightness",
-         "data": 100
-      }
-      {
-         "command": "piano",
-         "data": {"controller": 0, "window": 2}
-      }
-      {
-         "command": "christmas"
-      }
+    Handles WebSocket messages. Legacy commands now build a full frame on the fly.
     """
     await websocket.accept()
     connected_websockets.append(websocket)
@@ -673,37 +618,43 @@ async def websocket_endpoint(websocket: WebSocket):
             if command == "setall":
                 hexcolor = str(data_field).strip() if data_field is not None else ""
                 if len(hexcolor) == 6:
-                    for i in range(TOTAL_LEDS):
-                        legacy_current_state[i] = hexcolor
-                    apply_legacy_state()
+                    # Create a frame where every LED gets the same color.
+                    frame = [hex_to_rgb(hexcolor)] * TOTAL_LEDS
+                    send_frames(frame)
                     await websocket.send_text(json.dumps({"status": "OK"}))
                 else:
                     await websocket.send_text(json.dumps({"error": "Invalid hex color"}))
 
             elif command == "update":
+                # Expect an array of 400 hex color strings.
                 if isinstance(data_field, list) and len(data_field) == TOTAL_LEDS:
-                    for i, c in enumerate(data_field):
-                        legacy_current_state[i] = c
-                    apply_legacy_state()
-                    await websocket.send_text(json.dumps({"status": "OK"}))
+                    try:
+                        frame = [hex_to_rgb(str(c)) for c in data_field]
+                        send_frames(frame)
+                        await websocket.send_text(json.dumps({"status": "OK"}))
+                    except Exception as e:
+                        logging.error(f"Error processing update: {e}")
+                        await websocket.send_text(json.dumps({"error": "Error processing update command"}))
                 else:
                     await websocket.send_text(json.dumps({"error": f"Expected {TOTAL_LEDS} hex colors"}))
 
             elif command == "difference":
                 if isinstance(data_field, list):
+                    # Start with a blank (black) frame.
+                    frame = [(0, 0, 0)] * TOTAL_LEDS
                     for item in data_field:
                         try:
                             idx = int(item.get("index"))
-                            # Adjust index so that differences are applied to the proper element
-                            # (the physical LED ordering) when REVERSE_VIEW is enabled.
-                            if REVERSE_VIEW:
-                                idx = TOTAL_LEDS - 1 - idx
-                            col = str(item.get("color"))
-                            logger.debug(f"Setting index {idx} to color {col}")
-                            legacy_current_state[idx] = col
-                        except Exception:
+                            hexcolor = str(item.get("color")).strip()
+                            if len(hexcolor) != 6:
+                                logging.error(f"Invalid hex color '{hexcolor}' for index {idx}")
+                                continue
+                            logging.debug(f"Setting index {idx} to color {hexcolor}")
+                            frame[idx] = hex_to_rgb(hexcolor)
+                        except Exception as e:
+                            logging.error(f"Error processing difference item {item}: {e}")
                             continue
-                    apply_legacy_state()
+                    send_frames(frame)
                     await websocket.send_text(json.dumps({"status": "OK"}))
                 else:
                     await websocket.send_text(json.dumps({"error": "difference data malformed"}))
@@ -761,20 +712,6 @@ async def websocket_endpoint(websocket: WebSocket):
         if websocket in connected_websockets:
             connected_websockets.remove(websocket)
         logging.info(f"WebSocket disconnected. Current count: {len(connected_websockets)}")
-
-
-def apply_legacy_state():
-    """
-    Convert the global 'legacy_current_state' (400 hex strings)
-    into a list of (R, G, B), apply reversing if needed,
-    then call send_frames().
-    """
-    # Possibly do row-based reversing if you want to replicate
-    # the old code exactly. For now, a full reverse:
-    reversed_hex = reverse_legacy_state()
-
-    colors = [hex_to_rgb(h) for h in reversed_hex]
-    send_frames(colors)
 
 
 def set_brightness(value: int):
