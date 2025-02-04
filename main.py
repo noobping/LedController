@@ -132,6 +132,8 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     Args:
         colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
     """
+    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers.")
+    logging.debug(f"Collors: {colors}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
         for idx, ip in enumerate(WLED_IPS):
             start_idx = idx * LEDS_PER_CONTROLLER
@@ -333,12 +335,7 @@ def run_christmas_animation():
             time.sleep(0.1)
         if not stopChristmas:
             enabled = not enabled
-            logging.info(f"Switched to {'Red' if enabled else 'Green'} frame.")
-
-    # Clear on stop
-    black = [(0, 0, 0)] * TOTAL_LEDS
-    send_frames(black)
-    logging.info("Christmas animation stopped and LEDs cleared.")
+            logging.debug(f"Switched to {'Red' if enabled else 'Green'} frame.")
 
 
 def start_christmas():
@@ -378,6 +375,7 @@ def run_legacy_animation():
     global stopLegacy
     while not stopLegacy:
         send_frames(current_legacy_frame)
+        logging.debug(f"Update legacy frame")
         time.sleep(0.25)
 
 
