@@ -1,10 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse
+from threading import Thread
 from typing import List, Tuple
 import asyncio
 import concurrent.futures
 import cv2 as cv
 import glob
+import httpx
+import json
 import logging
 import numpy as np
 import os
@@ -12,9 +15,7 @@ import queue
 import requests
 import socket
 import time
-import httpx
 import uvicorn
-from threading import Thread
 
 # --------------------------------------------------------------------------------
 #                           LOGGING CONFIGURATION
@@ -620,120 +621,138 @@ async def get_brightness():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket commands supported (new style):
-        - "videolist"
-        - "video <videoName>"
-        - "stop"
-        - "brightness <intValue>"
-        - "piano <controller_idx>,<window_idx>"
-        - "christmas"
-
-    Also handles old-style commands:
-        - "setall <hexColor>"
-        - "update <hexColor_1>, <hexColor_2>, ..."
-        - "difference (index, color), (index, color), ...
+    WebSocket commands are exchanged in JSON.
+    Expected JSON format examples:
+      {
+         "command": "setall",
+         "data": "ff00ff"
+      }
+      {
+         "command": "update",
+         "data": ["ff00ff", "00ff00", ...]
+      }
+      {
+         "command": "difference",
+         "data": [{"index": 10, "color": "ff00ff"}, {"index":392, "color": "00ff00"}]
+      }
+      {
+         "command": "videolist"
+      }
+      {
+         "command": "video",
+         "data": "videoName"
+      }
+      {
+         "command": "stop"
+      }
+      {
+         "command": "brightness",
+         "data": 100
+      }
+      {
+         "command": "piano",
+         "data": {"controller": 0, "window": 2}
+      }
+      {
+         "command": "christmas"
+      }
     """
     await websocket.accept()
     connected_websockets.append(websocket)
-    logging.info(f"WebSocket connected. Current count: {
-                 len(connected_websockets)}")
+    logging.info(f"WebSocket connected. Current count: {len(connected_websockets)}")
 
     try:
         while True:
-            data = await websocket.receive_text()
-            parts = data.split(" ", 1)
-            command = parts[0].lower()
+            raw_data = await websocket.receive_text()
+            try:
+                msg = json.loads(raw_data)
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({"error": "Invalid JSON"}))
+                continue
+
+            command = msg.get("command", "").lower()
+            data_field = msg.get("data")
 
             if command == "setall":
-                # arg is een 6-karakter hex kleur
-                hexcolor = arg.strip()
+                hexcolor = str(data_field).strip() if data_field is not None else ""
                 if len(hexcolor) == 6:
                     for i in range(TOTAL_LEDS):
                         legacy_current_state[i] = hexcolor
-                    # Toepassen en verzenden
                     apply_legacy_state()
-                    await websocket.send_text("OK.")
+                    await websocket.send_text(json.dumps({"status": "OK"}))
                 else:
-                    await websocket.send_text("Error: Invalid hex color.")
+                    await websocket.send_text(json.dumps({"error": "Invalid hex color"}))
+
             elif command == "update":
-                # arg is een lijst van 400 hex strings gescheiden door ", "
-                color_list = arg.split(", ")
-                if len(color_list) == TOTAL_LEDS:
-                    for i, c in enumerate(color_list):
+                if isinstance(data_field, list) and len(data_field) == TOTAL_LEDS:
+                    for i, c in enumerate(data_field):
                         legacy_current_state[i] = c
                     apply_legacy_state()
-                    await websocket.send_text("OK.")
+                    await websocket.send_text(json.dumps({"status": "OK"}))
                 else:
-                    await websocket.send_text(f"Error: Expected {TOTAL_LEDS} hex colors.")
+                    await websocket.send_text(json.dumps({"error": f"Expected {TOTAL_LEDS} hex colors"}))
+
             elif command == "difference":
-                # arg is bijvoorbeeld "(index, color), (index, color), ..."
-                # We splitsen op ", " zodat elk paar items (index, color) vormt
-                diffs = arg.split(", ")
-                # Bijvoorbeeld: ["(10", "ff00ff)", "(392", "00ff00)"] etc.
-                if len(diffs) % 2 != 0:
-                    await websocket.send_text("Error: difference data malformed.")
-                else:
-                    for i in range(0, len(diffs), 2):
-                        idx_str = diffs[i].replace("(", "").replace(")", "")
-                        col_str = diffs[i+1].replace("(", "").replace(")", "")
+                if isinstance(data_field, list):
+                    for item in data_field:
                         try:
-                            idx = int(idx_str)
-                            col = col_str
+                            idx = int(item.get("index"))
+                            col = str(item.get("color"))
                             legacy_current_state[idx] = col
                         except Exception:
-                            pass
+                            continue
                     apply_legacy_state()
-                    await websocket.send_text("OK.")
+                    await websocket.send_text(json.dumps({"status": "OK"}))
+                else:
+                    await websocket.send_text(json.dumps({"error": "difference data malformed"}))
 
             elif command == "videolist":
                 videos = get_video_list()
-                await websocket.send_text("videos: " + ", ".join(videos))
+                await websocket.send_text(json.dumps({"videos": videos}))
 
             elif command == "video":
-                if len(parts) < 2:
-                    await websocket.send_text("Error: Missing video name.")
-                    continue
-                video_name = parts[1].strip()
-                start_video(video_name + ".mp4")
-                await websocket.send_text("Video playback started.")
+                if data_field is None or str(data_field).strip() == "":
+                    await websocket.send_text(json.dumps({"error": "Missing video name"}))
+                else:
+                    video_name = str(data_field).strip()
+                    start_video(video_name + ".mp4")
+                    await websocket.send_text(json.dumps({"status": "Video playback started"}))
 
             elif command == "stop":
                 stop_animation()
-                await websocket.send_text("All animations stopped.")
+                await websocket.send_text(json.dumps({"status": "All animations stopped"}))
 
             elif command == "brightness":
-                if len(parts) < 2:
-                    await websocket.send_text("Error: Missing brightness value.")
-                    continue
                 try:
-                    value = int(parts[1])
+                    value = int(data_field)
                     set_brightness(value)
-                    await websocket.send_text(f"Brightness set to {value}.")
-                except ValueError:
-                    await websocket.send_text("Error: Brightness value must be an integer.")
+                    await websocket.send_text(json.dumps({"status": f"Brightness set to {value}"}))
+                except (ValueError, TypeError):
+                    await websocket.send_text(json.dumps({"error": "Brightness value must be an integer"}))
 
             elif command == "piano":
-                # "piano 0,2"
-                if len(parts) < 2:
-                    await websocket.send_text("Error: Missing piano coords.")
-                    continue
-                coords = parts[1].split(",")
-                if len(coords) == 2:
-                    try:
-                        controller_idx = int(coords[0])
-                        window_idx = int(coords[1])
-                        handle_piano(controller_idx, window_idx)
-                        await websocket.send_text(f"Piano window {window_idx} on controller {controller_idx} activated.")
-                    except ValueError:
-                        await websocket.send_text("Error: Piano coords must be integers.")
+                if not (isinstance(data_field, dict) and "controller" in data_field and "window" in data_field):
+                    await websocket.send_text(json.dumps({
+                        "error": "Invalid piano command format. Use: {\"controller\": x, \"window\": y}"
+                    }))
                 else:
-                    await websocket.send_text("Error: Invalid piano command format. Use 'piano X,Y'")
+                    try:
+                        controller_idx = int(data_field["controller"])
+                        window_idx = int(data_field["window"])
+                        handle_piano(controller_idx, window_idx)
+                        await websocket.send_text(json.dumps({
+                            "status": f"Piano window {window_idx} on controller {controller_idx} activated"
+                        }))
+                    except ValueError:
+                        await websocket.send_text(json.dumps({"error": "Piano coords must be integers"}))
+
             elif command == "christmas":
                 start_christmas()
-                await websocket.send_text("Christmas animation started.")
+                await websocket.send_text(json.dumps({"status": "Christmas animation started"}))
+
             else:
-                logging.warning(f"Unknown new-style WebSocket command: {command}")
-                await websocket.send_text("Error: Unknown command.")
+                logging.warning(f"Unknown WebSocket command: {command}")
+                await websocket.send_text(json.dumps({"error": "Unknown command"}))
     except WebSocketDisconnect:
         logging.info("WebSocket disconnected")
     finally:
