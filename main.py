@@ -53,7 +53,7 @@ class WebSocketLogHandler(logging.Handler):
 
 # Configure the root logger
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # Remove existing handlers to prevent duplicate logs
 logger.handlers = []
@@ -132,8 +132,7 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     Args:
         colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
     """
-    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers.")
-    logging.debug(f"Collors: {colors}")
+    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers. Collors: {colors}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
         for idx, ip in enumerate(WLED_IPS):
             start_idx = idx * LEDS_PER_CONTROLLER
@@ -335,7 +334,7 @@ def run_christmas_animation():
             time.sleep(0.1)
         if not stopChristmas:
             enabled = not enabled
-            logging.debug(f"Switched to {'Red' if enabled else 'Green'} frame.")
+            logging.info(f"Switched to {'Red' if enabled else 'Green'} frame.")
 
 
 def start_christmas():
