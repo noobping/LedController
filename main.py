@@ -88,10 +88,6 @@ LEDS_PER_WINDOW = LEDS_PER_CONTROLLER // WINDOWS_PER_CONTROLLER  # 20
 TOTAL_CONTROLLERS = len(WLED_IPS)
 TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
 
-# Convert a 6-digit hex string (e.g. "ff8040") to (R, G, B)
-def hex_to_rgb(h: str) -> Tuple[int, int, int]:
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-
 # --------------------------------------------------------------------------------
 #                           LOW-LEVEL LED LOGIC
 # --------------------------------------------------------------------------------
@@ -358,12 +354,61 @@ def start_christmas():
     logging.info("Christmas animation thread started.")
 
 
+# --------------------------------------------------------------------------------
+#                           LEGACY COMMANDS
+# --------------------------------------------------------------------------------
+
+# Convert a 6-digit hex string (e.g. "ff8040") to (R, G, B)
+def hex_to_rgb(h: str) -> Tuple[int, int, int]:
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+# Global variable holding the current legacy frame (default black)
+current_legacy_frame: List[Tuple[int, int, int]] = [(0, 0, 0)] * TOTAL_LEDS
+
+# Globals for the legacy sender thread and its stop flag
+stopLegacy = False
+legacy_thread = None
+
+
+def run_legacy_animation():
+    """
+    Continuously sends the current legacy frame every 0.25 seconds until stopLegacy is True.
+    """
+    global stopLegacy
+    while not stopLegacy:
+        send_frames(current_legacy_frame)
+        time.sleep(0.25)
+
+
+def start_legacy_sender():
+    """
+    Starts the legacy sender thread if it is not already running.
+    """
+    global legacy_thread, stopLegacy
+    if legacy_thread is None or not legacy_thread.is_alive():
+        stopLegacy = False
+        legacy_thread = Thread(target=run_legacy_animation, daemon=True)
+        legacy_thread.start()
+        logging.info("Legacy sender thread started.")
+
+# --------------------------------------------------------------------------------
+#                           STOP ANIMATION LOGIC
+# --------------------------------------------------------------------------------
+
 def stop_animation():
     """
     Stops any ongoing animations, including video playback and Christmas animation.
     """
-    global stopVideo, video_thread, stopChristmas, christmas_thread
+    global stopVideo, video_thread, stopChristmas, christmas_thread, stopLegacy, legacy_thread
     logging.info("Stopping all ongoing animations.")
+
+    # Stop legacy sender
+    if legacy_thread and legacy_thread.is_alive():
+        logging.info("Stopping legacy sender.")
+        stopLegacy = True
+        legacy_thread.join()
+        legacy_thread = None
 
     # Stop video
     if video_thread and video_thread.is_alive():
@@ -596,7 +641,7 @@ async def get_brightness():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    Handles WebSocket messages. Legacy commands now build a full frame on the fly.
+    WebSocket endpoints.
     """
     await websocket.accept()
     connected_websockets.append(websocket)
@@ -607,7 +652,7 @@ async def websocket_endpoint(websocket: WebSocket):
             raw_data = await websocket.receive_text()
             try:
                 msg = json.loads(raw_data)
-                logger.debug(f"Received WebSocket message: {msg}")
+                logging.debug(f"Received WebSocket message: {msg}")
             except json.JSONDecodeError:
                 await websocket.send_text(json.dumps({"error": "Invalid JSON"}))
                 continue
@@ -616,21 +661,21 @@ async def websocket_endpoint(websocket: WebSocket):
             data_field = msg.get("data")
 
             if command == "setall":
+                # Build a frame where every LED gets the same color.
                 hexcolor = str(data_field).strip() if data_field is not None else ""
                 if len(hexcolor) == 6:
-                    # Create a frame where every LED gets the same color.
-                    frame = [hex_to_rgb(hexcolor)] * TOTAL_LEDS
-                    send_frames(frame)
+                    current_legacy_frame = [hex_to_rgb(hexcolor)] * TOTAL_LEDS
+                    start_legacy_sender()
                     await websocket.send_text(json.dumps({"status": "OK"}))
                 else:
                     await websocket.send_text(json.dumps({"error": "Invalid hex color"}))
 
             elif command == "update":
-                # Expect an array of 400 hex color strings.
+                # Expect a full frame: a list of 400 hex color strings.
                 if isinstance(data_field, list) and len(data_field) == TOTAL_LEDS:
                     try:
-                        frame = [hex_to_rgb(str(c)) for c in data_field]
-                        send_frames(frame)
+                        current_legacy_frame = [hex_to_rgb(str(c)) for c in data_field]
+                        start_legacy_sender()
                         await websocket.send_text(json.dumps({"status": "OK"}))
                     except Exception as e:
                         logging.error(f"Error processing update: {e}")
@@ -639,8 +684,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"error": f"Expected {TOTAL_LEDS} hex colors"}))
 
             elif command == "difference":
+                # Build a blank (black) frame and update only the specified indices.
                 if isinstance(data_field, list):
-                    # Start with a blank (black) frame.
                     frame = [(0, 0, 0)] * TOTAL_LEDS
                     for item in data_field:
                         try:
@@ -653,8 +698,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             frame[idx] = hex_to_rgb(hexcolor)
                         except Exception as e:
                             logging.error(f"Error processing difference item {item}: {e}")
-                            continue
-                    send_frames(frame)
+                    current_legacy_frame = frame
+                    start_legacy_sender()
                     await websocket.send_text(json.dumps({"status": "OK"}))
                 else:
                     await websocket.send_text(json.dumps({"error": "difference data malformed"}))
@@ -668,6 +713,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"error": "Missing video name"}))
                 else:
                     video_name = str(data_field).strip()
+                    stop_animation()
                     start_video(video_name + ".mp4")
                     await websocket.send_text(json.dumps({"status": "Video playback started"}))
 
