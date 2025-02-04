@@ -47,14 +47,29 @@ createApp({
             };
 
             socket.onmessage = (event) => {
-                // Try to parse the message as JSON
                 let incoming;
+                let messageType = "info";
+
                 try {
                     incoming = JSON.parse(event.data);
-                    messages.value.push({ text: "Received: " + JSON.stringify(incoming), type: 'info' });
+                    // Check for error or debug properties in the JSON payload.
+                    if (incoming.error !== undefined) {
+                        messageType = "error";
+                    } else if (incoming.includes("DEBUG")) {
+                        messageType = "debug";
+                    }
+                    messages.value.push({ text: "Received: " + JSON.stringify(incoming), type: messageType });
                 } catch (e) {
-                    messages.value.push({ text: "Received: " + event.data, type: 'info' });
+                    // If the message isn't valid JSON, inspect the raw string.
+                    const dataLower = event.data.toLowerCase();
+                    if (dataLower.includes("debug")) {
+                        messageType = "debug";
+                    } else if (dataLower.includes("error")) {
+                        messageType = "error";
+                    }
+                    messages.value.push({ text: event.data, type: messageType });
                 }
+
                 if (messages.value.length > MAX_MESSAGES) {
                     messages.value.shift();
                 }
