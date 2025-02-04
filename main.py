@@ -355,7 +355,7 @@ def start_christmas():
 
 
 # --------------------------------------------------------------------------------
-#                           LEGACY COMMANDS
+#                      LEGACY FUNCTIONS & GLOBALS
 # --------------------------------------------------------------------------------
 
 # Convert a 6-digit hex string (e.g. "ff8040") to (R, G, B)
@@ -386,12 +386,97 @@ def start_legacy_sender():
     """
     Starts the legacy sender thread if it is not already running.
     """
+    global video_thread, stopVideo, christmas_thread, stopChristmas
+    if video_thread and video_thread.is_alive():
+        logging.info("Stopping video playback.")
+        stopVideo = True
+        video_thread.join()
+        video_thread = None
+
+    if christmas_thread and christmas_thread.is_alive():
+        logging.info("Stopping Christmas animation.")
+        stopChristmas = True
+        christmas_thread.join()
+        christmas_thread = None
+
     global legacy_thread, stopLegacy
     if legacy_thread is None or not legacy_thread.is_alive():
         stopLegacy = False
         legacy_thread = Thread(target=run_legacy_animation, daemon=True)
         legacy_thread.start()
         logging.info("Legacy sender thread started.")
+
+
+def make_setall_frame(color: str) -> List[Tuple[int, int, int]]:
+    """
+    Creates a legacy frame where every LED is set to the same color.
+
+    Args:
+        color (str): A 6-digit hex string (e.g. "ff8040").
+
+    Returns:
+        List[Tuple[int, int, int]]: A list of TOTAL_LEDS copies of the RGB tuple.
+    """
+    rgb = hex_to_rgb(color)
+    return [rgb] * TOTAL_LEDS
+
+
+def setAllColors(color: str) -> None:
+    """
+    Legacy command to set all LEDs to the given color.
+    This function stops any current animations and updates the global legacy frame.
+
+    Args:
+        color (str): A 6-digit hex string (e.g. "ff8040").
+    """
+    global current_legacy_frame
+    # Create a frame where every LED is the same color.
+    frame = make_setall_frame(color)
+    current_legacy_frame = frame
+    logging.info(f"Legacy: Set all colors to #{color}")
+
+
+def update_matrix_legacy(colors: List[str]) -> None:
+    """
+    Legacy command to update the entire LED matrix.
+
+    Args:
+        colors (List[str]): A list of 6-digit hex strings, one per LED.
+
+    Raises:
+        ValueError: if the list length does not match TOTAL_LEDS.
+    """
+    if len(colors) != TOTAL_LEDS:
+        raise ValueError(f"Expected {TOTAL_LEDS} colors but got {len(colors)}")
+    global current_legacy_frame
+    # Convert each hex string to an RGB tuple.
+    current_legacy_frame = [hex_to_rgb(c) for c in colors]
+    logging.info("Legacy: Full matrix update performed.")
+
+
+def update_differences(diff_list: List[List[str]]) -> None:
+    """
+    Legacy command to update individual LED colors by index.
+
+    Args:
+        diff_list (List[List[str]]): A list of [index, hex_color] pairs. 
+          For example: [["23", "ff8040"], ["45", "00ff00"]]
+
+    This function updates the global legacy frame in-place.
+    """
+    global current_legacy_frame
+    for diff in diff_list:
+        try:
+            idx = int(diff[0])
+            if not (0 <= idx < TOTAL_LEDS):
+                logging.error(f"Legacy: Index {idx} out of bounds.")
+                continue
+            new_color = hex_to_rgb(diff[1])
+            current_legacy_frame[idx] = new_color
+            logging.debug(f"Legacy: Updated LED {idx} to #{diff[1]}")
+        except Exception as e:
+            logging.error(f"Legacy: Error updating difference {diff}: {e}")
+
 
 # --------------------------------------------------------------------------------
 #                           STOP ANIMATION LOGIC
@@ -639,27 +724,6 @@ async def get_brightness():
                 brightness_levels[ip] = "Error fetching brightness"
     return {"brightness": brightness_levels}
 
-
-# =============================================================================
-#  Helpers: Legacy functions & globals
-# =============================================================================
-
-# (Assume these functions and globals exist elsewhere in your code.)
-# For example, you might already have these from your old implementation:
-#   - setAllColors(color: str)
-#   - update_matrix_legacy(colors: List[str])
-#   - update_differences(diff_list: List[List[str]])
-#   - get_video_list() -> List[str]
-#   - start_video(video_name: str)
-#   - stop_animation()
-#   - set_brightness(value: int)
-#   - handle_piano(controller_idx: int, window_idx: int)
-#   - start_christmas()
-#
-# In the new code you already have many of these, but note that the
-# “legacy” update (and difference) commands now use the same underlying LED update
-# functions, so feel free to refactor if you wish.
-
 # =============================================================================
 #  Legacy API handler (byte-based commands)
 # =============================================================================
@@ -687,6 +751,7 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
                 await websocket.send_text("Error: Color must be a 6-digit hex string.")
                 return
             setAllColors(color_str)
+            start_legacy_sender()
 
         elif command == b"update":
             # Expect payload: a comma‐separated list of hex strings
@@ -697,6 +762,7 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
             # Convert each byte string to a regular string (hex color)
             color_list = [c.decode() for c in colors]
             update_matrix_legacy(color_list)
+            start_legacy_sender()
 
         elif command == b"difference":
             # Expect payload: comma–separated pairs; for example:
@@ -713,6 +779,7 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
                 color = parts[i+1].decode().strip("()")
                 diff_list.append([index, color])
             update_differences(diff_list)
+            start_legacy_sender()
 
         elif command == b"videolist":
             videos = get_video_list()
@@ -851,6 +918,7 @@ async def ws_main(websocket: WebSocket):
 # =============================================================================
 #  Separate endpoints for legacy and JSON clients
 # =============================================================================
+
 
 @app.websocket("/ws/legacy")
 async def ws_legacy_endpoint(websocket: WebSocket):
