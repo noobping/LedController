@@ -920,7 +920,7 @@ async def ws_main(websocket: WebSocket):
 # =============================================================================
 
 
-@app.websocket("/ws/legacy")
+@app.websocket("/ws/v1")
 async def ws_legacy_endpoint(websocket: WebSocket):
     """
     A dedicated endpoint for legacy clients that send raw bytes.
@@ -937,7 +937,7 @@ async def ws_legacy_endpoint(websocket: WebSocket):
         logging.info("WebSocket legacy endpoint disconnected.")
 
 
-@app.websocket("/ws/json")
+@app.websocket("/ws/v2")
 async def ws_json_endpoint(websocket: WebSocket):
     """
     A dedicated endpoint for JSON clients.

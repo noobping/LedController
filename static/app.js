@@ -34,7 +34,7 @@ createApp({
         const wsProtocol = isSecure ? 'wss' : 'ws';
         const httpProtocol = isSecure ? 'https' : 'http';
         const wsPort = 8901; // Adjust if your WebSocket server uses a different port
-        const wsUrl = `${wsProtocol}://${host}:${wsPort}/ws/json`;
+        const wsUrl = `${wsProtocol}://${host}:${wsPort}/ws/v2`;
         const healthUrl = `${httpProtocol}://${host}:${wsPort}/health`;
 
         // Connect to the WebSocket
