@@ -28,7 +28,7 @@ createApp({
         // Health check interval ID
         let healthCheckInterval = null;
 
-        // Dynamically construct WebSocket and fetch URLs based on current location
+        // Dynamically construct WebSocket and health URLs based on current location
         const host = window.location.hostname;
         const isSecure = window.location.protocol === 'https:';
         const wsProtocol = isSecure ? 'wss' : 'ws';
@@ -37,7 +37,7 @@ createApp({
         const wsUrl = `${wsProtocol}://${host}:${wsPort}/ws`;
         const healthUrl = `${httpProtocol}://${host}:${wsPort}/health`;
 
-        // Function to connect to WebSocket
+        // Connect to the WebSocket
         function connect() {
             socket = new WebSocket(wsUrl);
 
@@ -47,7 +47,14 @@ createApp({
             };
 
             socket.onmessage = (event) => {
-                messages.value.push({ text: event.data, type: 'info' });
+                // Try to parse the message as JSON
+                let incoming;
+                try {
+                    incoming = JSON.parse(event.data);
+                    messages.value.push({ text: "Received: " + JSON.stringify(incoming), type: 'info' });
+                } catch (e) {
+                    messages.value.push({ text: "Received: " + event.data, type: 'info' });
+                }
                 if (messages.value.length > MAX_MESSAGES) {
                     messages.value.shift();
                 }
@@ -62,17 +69,30 @@ createApp({
             socket.onclose = () => {
                 messages.value.push({ text: "WebSocket connection closed.", type: 'warning' });
                 scrollToBottom();
-                // Attempt to reconnect after a delay
+                // Attempt to reconnect after 5 seconds
                 setTimeout(connect, 5000);
             };
         }
 
+        // New sendCommand function: it sends a JSON payload over the socket.
         function sendCommand() {
-            const cmd = currentCommand.value.trim();
-            if (!cmd) return;
+            const cmdText = currentCommand.value.trim();
+            if (!cmdText) return;
+            let jsonPayload;
+            try {
+                // If the input is valid JSON, use it directly.
+                jsonPayload = JSON.parse(cmdText);
+            } catch (e) {
+                // Otherwise, treat it as a "command data" string.
+                const parts = cmdText.split(" ");
+                const command = parts[0];
+                const data = parts.slice(1).join(" ") || null;
+                jsonPayload = { command, data };
+            }
+            const jsonMessage = JSON.stringify(jsonPayload);
             if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(cmd);
-                messages.value.push({ text: "> " + cmd, type: 'command' });
+                socket.send(jsonMessage);
+                messages.value.push({ text: "> " + jsonMessage, type: 'command' });
                 if (messages.value.length > MAX_MESSAGES) {
                     messages.value.shift();
                 }
@@ -93,7 +113,6 @@ createApp({
                 selectedSuggestionIndex.value = -1;
                 return;
             }
-
             filteredSuggestions.value = knownCommands.filter(cmd =>
                 cmd.toLowerCase().startsWith(input)
             );
@@ -103,8 +122,7 @@ createApp({
         function selectNextSuggestion() {
             if (filteredSuggestions.value.length > 0) {
                 selectedSuggestionIndex.value =
-                    (selectedSuggestionIndex.value + 1) %
-                    filteredSuggestions.value.length;
+                    (selectedSuggestionIndex.value + 1) % filteredSuggestions.value.length;
                 currentCommand.value = filteredSuggestions.value[selectedSuggestionIndex.value];
             }
         }
@@ -165,7 +183,7 @@ createApp({
 
         onMounted(() => {
             messages.value.push({
-                text: "Type a command and press Enter to send it to the server.",
+                text: "Type a command and press Enter to send it as JSON to the server.",
                 type: 'info'
             });
             messages.value.push({
@@ -182,7 +200,6 @@ createApp({
             });
             connect();
             checkHealth();
-
             // Set up a periodic health check every 60 seconds
             healthCheckInterval = setInterval(checkHealth, 60000);
         });
