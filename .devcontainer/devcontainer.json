@@ -9,5 +9,5 @@
         "mhutchie.git-graph",
         "Tyriar.sort-lines"
     ],
-    "postCreateCommand": "pip install opencv-python numpy"
+    "postCreateCommand": "pip install --no-cache-dir -r requirements.txt opencv-python numpy"
 }
