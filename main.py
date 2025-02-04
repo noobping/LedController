@@ -643,58 +643,51 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            data = await websocket.receive_bytes()
-            # We'll handle both new-style (space-separated) and old-style (split on "; ")
-            # So let's see if there's a semicolon approach:
-            if b"; " in data:
-                # old-style approach
-                parts = data.split(b"; ")
-                # e.g. "setall" or "update"
-                command = parts[0].decode("utf-8").lower()
-                arg = parts[1] if len(parts) > 1 else b""
-                # Dispatch old commands
+            data = await websocket.receive_text()
+            if "; " in data:
+                # old-style
+                parts = data.split("; ")
+                # e.g. "setall" of "update"
+                command = parts[0].lower()
+                arg = parts[1] if len(parts) > 1 else ""
+                # Verwerk oude commando's
                 if command == "setall":
-                    # Arg is a 6-char hex color
-                    hexcolor = arg.decode("utf-8").strip()
+                    # arg is een 6-karakter hex kleur
+                    hexcolor = arg.strip()
                     if len(hexcolor) == 6:
                         for i in range(TOTAL_LEDS):
                             legacy_current_state[i] = hexcolor
-                        # Convert & send
+                        # Toepassen en verzenden
                         apply_legacy_state()
                         await websocket.send_text("OK.")
                     else:
                         await websocket.send_text("Error: Invalid hex color.")
                 elif command == "update":
-                    # Arg is a list of 400 hex strings separated by ", "
-                    color_list = arg.split(b", ")
+                    # arg is een lijst van 400 hex strings gescheiden door ", "
+                    color_list = arg.split(", ")
                     if len(color_list) == TOTAL_LEDS:
                         for i, c in enumerate(color_list):
-                            legacy_current_state[i] = c.decode("utf-8")
+                            legacy_current_state[i] = c
                         apply_legacy_state()
                         await websocket.send_text("OK.")
                     else:
                         await websocket.send_text(f"Error: Expected {TOTAL_LEDS} hex colors.")
                 elif command == "difference":
-                    # Arg is e.g. "(index, color), (index, color), ..."
-                    # let's parse them
-                    # Example chunk: b"(10, ff00ff), (392, 00ff00)"
-                    # Strategy: split by ", " => each pair of items forms (index, color)
-                    diffs = arg.split(b", ")
-                    # diffs might be ["(10", "ff00ff)", "(392", "00ff00)"] etc.
-                    # We'll pair them up:
+                    # arg is bijvoorbeeld "(index, color), (index, color), ..."
+                    # We splitsen op ", " zodat elk paar items (index, color) vormt
+                    diffs = arg.split(", ")
+                    # Bijvoorbeeld: ["(10", "ff00ff)", "(392", "00ff00)"] etc.
                     if len(diffs) % 2 != 0:
                         await websocket.send_text("Error: difference data malformed.")
                     else:
                         for i in range(0, len(diffs), 2):
-                            idx_str = diffs[i].replace(
-                                b"(", b"").replace(b")", b"")
-                            col_str = diffs[i +
-                                            1].replace(b"(", b"").replace(b")", b"")
+                            idx_str = diffs[i].replace("(", "").replace(")", "")
+                            col_str = diffs[i+1].replace("(", "").replace(")", "")
                             try:
                                 idx = int(idx_str)
-                                col = col_str.decode("utf-8")
+                                col = col_str
                                 legacy_current_state[idx] = col
-                            except:
+                            except Exception:
                                 pass
                         apply_legacy_state()
                         await websocket.send_text("OK.")
@@ -702,7 +695,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     videos = get_video_list()
                     await websocket.send_text("videos: " + ", ".join(videos))
                 elif command == "video":
-                    video_name = arg.decode("utf-8").strip()
+                    video_name = arg.strip()
                     if video_name:
                         start_video(video_name + ".mp4")
                         await websocket.send_text("OK.")
@@ -716,16 +709,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         value = int(arg)
                         set_brightness(value)
                         await websocket.send_text("OK.")
-                    except:
+                    except Exception:
                         await websocket.send_text("Error: brightness value must be integer.")
                 else:
-                    logging.warning(
-                        f"Unknown old-style WebSocket command: {command}")
+                    logging.warning(f"Unknown old-style WebSocket command: {command}")
                     await websocket.send_text("Error: Unknown old-style command.")
             else:
-                # Possibly new-style approach, space-separated
-                parts = data.split(b" ", 1)
-                command = parts[0].decode("utf-8").lower()
+                # new-style
+                parts = data.split(" ", 1)
+                command = parts[0].lower()
 
                 if command == "videolist":
                     videos = get_video_list()
@@ -735,7 +727,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if len(parts) < 2:
                         await websocket.send_text("Error: Missing video name.")
                         continue
-                    video_name = parts[1].decode("utf-8").strip()
+                    video_name = parts[1].strip()
                     start_video(video_name + ".mp4")
                     await websocket.send_text("Video playback started.")
 
@@ -759,7 +751,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if len(parts) < 2:
                         await websocket.send_text("Error: Missing piano coords.")
                         continue
-                    coords = parts[1].split(b",")
+                    coords = parts[1].split(",")
                     if len(coords) == 2:
                         try:
                             controller_idx = int(coords[0])
@@ -770,13 +762,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_text("Error: Piano coords must be integers.")
                     else:
                         await websocket.send_text("Error: Invalid piano command format. Use 'piano X,Y'")
-
                 elif command == "christmas":
                     start_christmas()
                     await websocket.send_text("Christmas animation started.")
                 else:
-                    logging.warning(
-                        f"Unknown new-style WebSocket command: {command}")
+                    logging.warning(f"Unknown new-style WebSocket command: {command}")
                     await websocket.send_text("Error: Unknown command.")
     except WebSocketDisconnect:
         logging.info("WebSocket disconnected")
