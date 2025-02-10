@@ -12,16 +12,62 @@ import json
 import logging
 import numpy as np
 import os
+import queue
 import requests
 import socket
 import time
 import uvicorn
 
+# --------------------------------------------------------------------------------
+#                           LOGGING CONFIGURATION
+# --------------------------------------------------------------------------------
+
 # List to keep track of connected WebSocket clients
 connected_websockets: List[WebSocket] = []
 
-# Logging configuration
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# Asynchronous queue to hold log messages for broadcasting
+log_queue = asyncio.Queue()
+
+# Synchronous queue to buffer log messages before the event loop starts
+sync_log_queue = queue.Queue()
+
+
+class WebSocketLogHandler(logging.Handler):
+    """
+    Custom logging handler that sends log records to a synchronous queue.
+    """
+
+    def __init__(self, level=logging.NOTSET):
+        super().__init__(level=level)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Send the log record's message into a synchronous queue."""
+        msg = self.format(record)
+        try:
+            sync_log_queue.put_nowait(msg)
+        except queue.Full:
+            # Handle full queue scenario if needed
+            logging.warning("Log queue is full. Dropping log message.")
+            pass
+
+
+# Configure the root logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Remove existing handlers to prevent duplicate logs
+logger.handlers = []
+
+# Create and add console handler
+console_handler = logging.StreamHandler()
+console_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# Create and add WebSocket log handler
+ws_handler = WebSocketLogHandler()
+ws_handler.setFormatter(console_formatter)
+logger.addHandler(ws_handler)
 
 # --------------------------------------------------------------------------------
 #                         WLED & VIDEO CONFIGURATION
@@ -485,6 +531,23 @@ It provides:
 - **(Legacy) 'setall', 'update', 'difference'** WebSocket commands for backward compatibility.
 """
 
+
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler for startup/shutdown tasks.
+
+    Args:
+        app (FastAPI): The FastAPI application instance.
+    """
+    logging.info("Application startup: Initializing background tasks.")
+    asyncio.create_task(transfer_sync_to_async())
+    asyncio.create_task(broadcast_logs())
+
+    yield  # hand over to the application
+
+    logging.info("Application shutdown: Cleaning up background tasks.")
+    stop_animation()
+
 app = FastAPI(
     title="LedControllerAPI",
     summary="API server for controlling WLED lights like a matrix.",
@@ -494,7 +557,8 @@ app = FastAPI(
         "name": "Lucrasoft",
         "url": "https://www.lucrasoft.nl/",
         "email": "info@lucrasoft.nl"
-    }
+    },
+    lifespan=lifespan
 )
 
 
@@ -901,5 +965,39 @@ def set_brightness(value: int):
             logging.error(f"Failed to set brightness on {ip}: {e}")
 
 
+async def transfer_sync_to_async():
+    """
+    Asynchronous task: move log messages from sync_log_queue => log_queue
+    once the event loop is running.
+    """
+    while True:
+        try:
+            msg = sync_log_queue.get(timeout=0.1)
+            await log_queue.put(msg)
+        except queue.Empty:
+            await asyncio.sleep(0.1)
+
+
+async def broadcast_logs():
+    """
+    Reads from log_queue and sends log messages to all connected websockets.
+    """
+    while True:
+        msg = await log_queue.get()
+        if not connected_websockets:
+            await asyncio.sleep(0.1)
+            continue
+        dead_websockets = []
+        for ws in connected_websockets:
+            try:
+                await ws.send_text(msg)
+            except:
+                dead_websockets.append(ws)
+        for ws in dead_websockets:
+            if ws in connected_websockets:
+                connected_websockets.remove(ws)
+                logging.info("Removed dead WebSocket.")
+
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8901, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8901, reload=True)
