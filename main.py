@@ -246,6 +246,25 @@ def get_video_list():
     return videoList
 
 
+@app.get("/health")
+def health_check():
+    """
+    Health check endpoint to verify if the WLED controllers are reachable.
+    """
+    health_status = {}
+    for ip in WLED_IPS:
+        try:
+            resp = requests.get(f"http://{ip}/json", timeout=2.0)
+            if resp.status_code == 200:
+                health_status[ip] = "OK"
+            else:
+                health_status[ip] = f"Error: {resp.status_code}"
+        except requests.RequestException as e:
+            health_status[ip] = f"Error: {e}"
+
+    return health_status
+
+
 def set_brightness(value: int):
     """
     Sets brightness of the WLED controllers and corrects any other
