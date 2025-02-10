@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from threading import Thread
 from typing import List, Tuple
 import asyncio
-import bytes
 import concurrent.futures
 import cv2 as cv
 import glob
