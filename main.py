@@ -829,7 +829,7 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
 #  Main WebSocket endpoint: supports both legacy (bytes) and JSON (text) messages
 # =============================================================================
 
-@app.websocket("/ws/main")
+@app.websocket("/ws")
 async def ws_main(websocket: WebSocket):
     """
     The unified WebSocket endpoint that accepts both legacy byte messages and
