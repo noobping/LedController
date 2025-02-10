@@ -894,7 +894,7 @@ def set_brightness(value: int):
     payload = {"state": {"on": True, "bri": value}}
     for ip in WLED_IPS:
         try:
-            requests.post(f"http://{ip}/json", json=payload)
+            requests.post(f"http://{ip}/json", json=payload, timeout=1)
             logging.info(f"Set brightness to {value} on {ip}")
         except Exception as e:
             logging.error(f"Failed to set brightness on {ip}: {e}")
