@@ -277,7 +277,7 @@ def start_video(video_name: str):
     # If a video is already playing, stop it
     if video_thread and video_thread.is_alive():
         stopVideo = True
-        video_thread.join(timeout=2)
+        video_thread.join()
 
     stopVideo = False
     video_path = os.path.join(os.path.dirname(__file__), "videos", video_name)
@@ -390,7 +390,7 @@ def start_legacy_sender():
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
         stopVideo = True
-        video_thread.join(timeout=2)
+        video_thread.join()
         video_thread = None
 
     if christmas_thread and christmas_thread.is_alive():
