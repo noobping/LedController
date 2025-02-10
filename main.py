@@ -507,6 +507,9 @@ def root():
     Return index.html for the root path.
     """
     file_path = os.path.join("static", "index.html")
+    if not os.path.exists(file_path):
+        return {"error": "index.html not found"}
+
     return FileResponse(file_path)
 
 
