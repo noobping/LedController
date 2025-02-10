@@ -998,7 +998,6 @@ async def ws_main(websocket: WebSocket):
     If a text message is received, it is assumed to be JSON and is dispatched accordingly.
     """
     await websocket.accept()
-    connected_websockets.append(websocket)
     try:
         while True:
             message = await websocket.receive()
@@ -1023,7 +1022,6 @@ async def ws_legacy_endpoint(websocket: WebSocket):
     A dedicated endpoint for legacy clients that send raw bytes.
     """
     await websocket.accept()
-    connected_websockets.append(websocket)
     try:
         while True:
             message = await websocket.receive()
