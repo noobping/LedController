@@ -920,7 +920,19 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
     command = msg.get("command", "").lower()
     data_field = msg.get("data")
 
-    if command == "videolist":
+    if command == "log":
+        log_level = "info" if data_field is None or str(data_field).strip() == "" else str(data_field).strip()
+        new_level_int = getattr(logging, log_level.upper(), None)
+
+        if not isinstance(new_level_int, int):
+            await websocket.send_text(json.dumps({"error": "Invalid log level provided"}))
+            return
+        # Set the new log level
+        logger.setLevel(new_level_int)
+        await websocket.send_text(json.dumps({"status": f"Log level changed to {log_level.upper()}"}))
+        return
+
+    elif command == "videolist":
         videos = get_video_list()
         await websocket.send_text(json.dumps({"videos": videos}))
 
@@ -974,6 +986,7 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
 # =============================================================================
 #  Main WebSocket endpoint: supports both legacy (bytes) and JSON (text) messages
 # =============================================================================
+
 
 @app.websocket("/ws")
 async def ws_main(websocket: WebSocket):
