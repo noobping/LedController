@@ -59,23 +59,21 @@ stopVideo = False
 idleCounterLimit = 3
 
 
-""" This code is used to repeatedly send the current state in the background """
 currentState = ["000000"] * LEDS_IN_MATRIX
 
 
 @app.on_event("startup")
 def startup_event():
+    """ This code is used to repeatedly send the current state in the background """
     Thread(target=send_state, daemon=True).start()
 
 
-""" 
-    This function repeatedly updates the LED matrix with the current state. 
-    For more information on the format of the byteString, check out the official WLED page for UDP:
-    https://kno.wled.ge/interfaces/udp-realtime/
-"""
-
-
 def send_state():
+    """ 
+        This function repeatedly updates the LED matrix with the current state. 
+        For more information on the format of the byteString, check out the official WLED page for UDP:
+        https://kno.wled.ge/interfaces/udp-realtime/
+    """
     idleCounter = 0
     while True:
         # Quick fix for stopping constant updates when idle
@@ -98,14 +96,12 @@ def send_state():
         time.sleep(0.05)
 
 
-"""
-This function reverses the currentState variable when REVERSE_VIEW is
-true, and returns it. When REVERSE_VIEW is false, it will return
-currentState without modifying it.
-"""
-
-
 def reverse_state():
+    """
+    This function reverses the currentState variable when REVERSE_VIEW is
+    true, and returns it. When REVERSE_VIEW is false, it will return
+    currentState without modifying it.
+    """
     global currentState
     if not REVERSE_VIEW:
         return currentState
@@ -119,18 +115,16 @@ def reverse_state():
     return tempState
 
 
-""" 
-    This is the websocket endpoint for the application.
-    The protocol works as such:
-    Messages are received as UTF-8 formatted bytestrings.
-    The first word of the message determines the function to be called,
-    and is followed up by a semicolon and a space.
-    Which is then followed by the relevant data (color, matrix/list of colors, etc.).
-"""
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """ 
+        This is the websocket endpoint for the application.
+        The protocol works as such:
+        Messages are received as UTF-8 formatted bytestrings.
+        The first word of the message determines the function to be called,
+        and is followed up by a semicolon and a space.
+        Which is then followed by the relevant data (color, matrix/list of colors, etc.).
+    """
     await websocket.accept()
     try:
         while True:
@@ -176,25 +170,20 @@ def setAllColors(color: str):
     currentState = [color] * LEDS_IN_MATRIX
 
 
-"""
-    A class to represent the colors of the LED matrix.
-    The State variable holds all the data, and the list must be the same
-    size as the configured LED matrix.
-"""
-
-
 class ColorMatrix(BaseModel):
+    """
+        A class to represent the colors of the LED matrix.
+        The State variable holds all the data, and the list must be the same
+        size as the configured LED matrix.
+    """
     State: List[str]
 
 
-"""
-    This function sets the light matrix to the colors specified in
-    the State list from the given ColorMatrix object.
-"""
-
-
 def update_matrix(colorMatrix: ColorMatrix):
-
+    """
+        This function sets the light matrix to the colors specified in
+        the State list from the given ColorMatrix object.
+    """
     global currentState
     if len(colorMatrix.State) == LEDS_IN_MATRIX:
         currentState = colorMatrix.State
@@ -211,14 +200,12 @@ def start_video(videoName: str):
     Thread(target=video_playback, args=(videoName,)).start()
 
 
-"""
-    This function uses openCV to take the frames of a video file and
-    display them on the LED matrix.
-    It can be stopped by receiving the relevant command.
-"""
-
-
 def video_playback(videoName: str):
+    """
+        This function uses openCV to take the frames of a video file and
+        display them on the LED matrix.
+        It can be stopped by receiving the relevant command.
+    """
     global currentState
     global stopVideo
     stopVideo = False
@@ -248,26 +235,22 @@ def video_playback(videoName: str):
         time.sleep(0.05)
 
 
-"""
-    Returns the names of all files in the /videos folder.
-"""
-
-
 @app.get("/videolist")
 def get_video_list():
+    """
+    Returns the names of all files in the /videos folder.
+    """
     print(VIDEO_PATH)
     videoList = [video.split("/")[-1]
                  for video in glob.glob(os.path.join(VIDEO_PATH, "*.mp4"))]
     return videoList
 
 
-"""
+def set_brightness(value: int):
+    """
     Sets brightness of the WLED controllers and corrects any other
     possible mistakes in the configuration.
-"""
-
-
-def set_brightness(value: int):
+    """
     json = {
         "on": True,
         "bri": value,
