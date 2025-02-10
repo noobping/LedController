@@ -231,7 +231,7 @@ def start_video(video_name: str):
     # If a video is already playing, stop it
     if video_thread and video_thread.is_alive():
         stopVideo = True
-        video_thread.join(timeout=5)
+        video_thread.join(timeout=2)
 
     stopVideo = False
     video_path = os.path.join(os.path.dirname(__file__), "videos", video_name)
@@ -344,13 +344,13 @@ def start_legacy_sender():
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
         stopVideo = True
-        video_thread.join(timeout=5)
+        video_thread.join(timeout=2)
         video_thread = None
 
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
         stopChristmas = True
-        christmas_thread.join(timeout=5)
+        christmas_thread.join(timeout=2)
         christmas_thread = None
 
     global legacy_thread, stopLegacy
@@ -489,7 +489,7 @@ app = FastAPI(
     title="LedControllerAPI",
     summary="API server for controlling WLED lights like a matrix.",
     description=description,
-    version="0.5.0",
+    version="0.2.0",
     contact={
         "name": "Lucrasoft",
         "url": "https://www.lucrasoft.nl/",
@@ -520,7 +520,7 @@ async def health_check():
     Health check endpoint to verify if the WLED controllers are reachable.
     """
     health_status = {}
-    async with httpx.AsyncClient(timeout=1.0) as client:
+    async with httpx.AsyncClient(timeout=2.0) as client:
         tasks = [client.get(f"http://{ip}/json") for ip in WLED_IPS]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         for ip, resp in zip(WLED_IPS, responses):
@@ -829,7 +829,7 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
 #  Main WebSocket endpoint: supports both legacy (bytes) and JSON (text) messages
 # =============================================================================
 
-@app.websocket("/ws")
+@app.websocket("/ws/main")
 async def ws_main(websocket: WebSocket):
     """
     The unified WebSocket endpoint that accepts both legacy byte messages and
@@ -895,7 +895,7 @@ def set_brightness(value: int):
     payload = {"state": {"on": True, "bri": value}}
     for ip in WLED_IPS:
         try:
-            requests.post(f"http://{ip}/json", json=payload, timeout=1)
+            requests.post(f"http://{ip}/json", json=payload, timeout=2)
             logging.info(f"Set brightness to {value} on {ip}")
         except Exception as e:
             logging.error(f"Failed to set brightness on {ip}: {e}")
