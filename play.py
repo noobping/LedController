@@ -1,8 +1,19 @@
-import keyboard
 import logging
-import video
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+try:
+    import video
+except ImportError:
+    print("Missing 'video.py' file. Please make sure it is in the same directory.")
+    exit(1)
+
+try:
+    import keyboard
+except ImportError:
+    print("Please install the 'keyboard' package (pip install keyboard).")
+    exit(1)
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(message)s")
 
 
 def keyboard_listener(loop: bool = False, max_fps: float = None):
