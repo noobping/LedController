@@ -9,6 +9,7 @@ createApp({
         let socket = null;
 
         // List of commands (for autocomplete/help)
+        const knownCommands = [
             "videolist",
             "video <video_name>",
             "stop",
