@@ -53,7 +53,7 @@ class WebSocketLogHandler(logging.Handler):
 
 # Configure the root logger
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # Remove existing handlers to prevent duplicate logs
 logger.handlers = []
