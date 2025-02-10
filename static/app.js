@@ -123,7 +123,7 @@ createApp({
                 switch (command) {
                     case "log":
                         let level = args ? args.toLowerCase() : "info";
-                        jsonPayload = { command: "log", level: level };
+                        jsonPayload = { command: "log", data: level };
                         break;
                     case "videolist":
                         jsonPayload = { command: "videolist" };
