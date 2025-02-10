@@ -50,7 +50,7 @@ TOTAL_LEDS = LEDS_PER_CONTROLLER * TOTAL_CONTROLLERS  # 400
 def build_packet(colors: List[Tuple[int, int, int]]) -> bytes:
     """
     Builds the DRGB packet (no header, just RGB bytes).
-    Reverses color order first, matching your code snippet.
+    Reverses color order first.
 
     Args:
         colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
