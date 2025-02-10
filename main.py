@@ -979,6 +979,13 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
         start_christmas()
         await websocket.send_text(json.dumps({"status": "Christmas animation started"}))
 
+    elif command == "commands":
+        await websocket.send_text(json.dumps({
+            "commands": [
+                "log", "videolist", "video", "stop", "brightness", "piano", "christmas"
+            ]
+        }))
+
     else:
         logging.warning(f"Unknown JSON command: {command}")
         await websocket.send_text(json.dumps({"error": "Unknown command"}))
