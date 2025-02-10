@@ -4,21 +4,20 @@ createApp({
     setup() {
         const currentCommand = ref("");
         const messages = ref([
-            { text: "Welcome to the LED Controller WebSocket Client!", type: 'info' }
+            { text: "Welcome to the LED Controller WebSocket Client!", type: "info" },
         ]);
         let socket = null;
 
-        // Example commands for autocomplete
-        const knownCommands = [
-            "christmas",
+        // List of commands (for autocomplete/help)
             "videolist",
-            "video windows_21_dec",
+            "video <video_name>",
             "stop",
-            "brightness 255",
-            "piano 0,0",
-            "setall ffffff",
-            "update 000000, ffffff, 000000, ffffff",
-            "difference (0), ffffff, (1), 000000",
+            "brightness <0-255>",
+            "piano <controller,window[,persistent, r, g, b]>",
+            "christmas",
+            "setall <6-digit hex>",
+            "update <400 comma-separated hex colors>",
+            "difference <(index), hex, (index), hex, ...>",
         ];
 
         const filteredSuggestions = ref([]);
@@ -28,21 +27,21 @@ createApp({
         // Health check interval ID
         let healthCheckInterval = null;
 
-        // Dynamically construct WebSocket and health URLs based on current location
+        // Dynamically construct WebSocket and HTTP URLs based on the current location
         const host = window.location.hostname;
-        const isSecure = window.location.protocol === 'https:';
-        const wsProtocol = isSecure ? 'wss' : 'ws';
-        const httpProtocol = isSecure ? 'https' : 'http';
-        const wsPort = 8901; // Adjust if your WebSocket server uses a different port
-        const wsUrl = `${wsProtocol}://${host}:${wsPort}/ws/v2`;
-        const healthUrl = `${httpProtocol}://${host}:${wsPort}/health`;
+        const isSecure = window.location.protocol === "https:";
+        const wsProtocol = isSecure ? "wss" : "ws";
+        const httpProtocol = isSecure ? "https" : "http";
+        const port = 8901; // Use the same port as defined in your FastAPI app
+        const wsUrl = `${wsProtocol}://${host}:${port}/ws/v2`;
+        const healthUrl = `${httpProtocol}://${host}:${port}/health`;
 
-        // Connect to the WebSocket
+        // Connect to the WebSocket (using the new JSON endpoint)
         function connect() {
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                messages.value.push({ text: "Connected to WebSocket.", type: 'info' });
+                messages.value.push({ text: "Connected to WebSocket.", type: "info" });
                 scrollToBottom();
             };
 
@@ -52,21 +51,23 @@ createApp({
 
                 try {
                     incoming = JSON.parse(event.data);
-                    // Check for error or debug properties in the JSON payload.
+                    // If the payload has an "error" or "status" field, use that.
                     if (incoming.error !== undefined) {
                         messageType = "error";
                     } else if (incoming.status !== undefined) {
                         messageType = "status";
-                    } else if (incoming.includes("DEBUG")) {
-                        messageType = "debug";
                     }
                     messages.value.push({
-                        text: incoming.error !== undefined ? incoming.error :
-                            (incoming.status !== undefined ? incoming.status : JSON.stringify(incoming)),
-                        type: messageType
+                        text:
+                            incoming.error !== undefined
+                                ? incoming.error
+                                : incoming.status !== undefined
+                                    ? incoming.status
+                                    : JSON.stringify(incoming),
+                        type: messageType,
                     });
                 } catch (e) {
-                    // If the message isn't valid JSON, inspect the raw string.
+                    // If the message isn’t valid JSON, just show the raw text.
                     const dataLower = event.data.toLowerCase();
                     if (dataLower.includes("debug")) {
                         messageType = "debug";
@@ -83,37 +84,164 @@ createApp({
             };
 
             socket.onerror = (error) => {
-                messages.value.push({ text: "WebSocket Error: " + (error.message || "Unknown error"), type: 'error' });
+                messages.value.push({
+                    text: "WebSocket Error: " + (error.message || "Unknown error"),
+                    type: "error",
+                });
                 scrollToBottom();
             };
 
             socket.onclose = () => {
-                messages.value.push({ text: "WebSocket connection closed.", type: 'warning' });
+                messages.value.push({
+                    text: "WebSocket connection closed.",
+                    type: "warning",
+                });
                 scrollToBottom();
-                // Attempt to reconnect after 5 seconds
+                // Try to reconnect after 5 seconds.
                 setTimeout(connect, 5000);
             };
         }
 
-        // New sendCommand function: it sends a JSON payload over the socket.
+        // The updated sendCommand function builds a JSON payload based on the command entered.
         function sendCommand() {
             const cmdText = currentCommand.value.trim();
             if (!cmdText) return;
-            let jsonPayload;
+            let jsonPayload = null;
+
+            // First, try to parse the input as JSON directly.
             try {
-                // If the input is valid JSON, use it directly.
                 jsonPayload = JSON.parse(cmdText);
             } catch (e) {
-                // Otherwise, treat it as a "command data" string.
+                // Otherwise, parse as a simple command string.
+                // Split the command text into the command name and arguments.
                 const parts = cmdText.split(" ");
-                const command = parts[0];
-                const data = parts.slice(1).join(" ") || null;
-                jsonPayload = { command, data };
+                const command = parts[0].toLowerCase();
+                const args = parts.slice(1).join(" ");
+
+                switch (command) {
+                    case "videolist":
+                        jsonPayload = { command: "videolist" };
+                        break;
+                    case "video":
+                        if (!args) {
+                            messages.value.push({
+                                text: "video command requires a video name",
+                                type: "error",
+                            });
+                            return;
+                        }
+                        jsonPayload = { command: "video", data: args };
+                        break;
+                    case "stop":
+                        jsonPayload = { command: "stop" };
+                        break;
+                    case "brightness":
+                        const brightnessValue = parseInt(args, 10);
+                        if (isNaN(brightnessValue)) {
+                            messages.value.push({
+                                text: "brightness command requires a numeric value",
+                                type: "error",
+                            });
+                            return;
+                        }
+                        jsonPayload = { command: "brightness", data: brightnessValue };
+                        break;
+                    case "piano":
+                        // Expect input like: "piano 0,0" or "piano 0,0,true,255,255,255"
+                        const pianoParts = args.split(",");
+                        if (pianoParts.length < 2) {
+                            messages.value.push({
+                                text:
+                                    "Error: piano command requires at least a controller and window index",
+                                type: "error",
+                            });
+                            return;
+                        }
+                        const controller = parseInt(pianoParts[0].trim(), 10);
+                        const windowIdx = parseInt(pianoParts[1].trim(), 10);
+                        let persistent = false;
+                        let color = [255, 255, 255]; // default white
+                        if (pianoParts.length >= 3) {
+                            // Third argument: persistent flag (true/false)
+                            persistent =
+                                pianoParts[2].trim().toLowerCase() === "true" ? true : false;
+                        }
+                        if (pianoParts.length >= 6) {
+                            // Optional R, G, B values
+                            color = [
+                                parseInt(pianoParts[3].trim(), 10),
+                                parseInt(pianoParts[4].trim(), 10),
+                                parseInt(pianoParts[5].trim(), 10),
+                            ];
+                        }
+                        jsonPayload = {
+                            command: "piano",
+                            data: {
+                                controller: controller,
+                                window: windowIdx,
+                                persistent: persistent,
+                                color: color,
+                            },
+                        };
+                        break;
+                    case "christmas":
+                        jsonPayload = { command: "christmas" };
+                        break;
+                    case "setall":
+                        // Expect a 6-digit hex string, for example: "setall ffffff"
+                        if (!args || args.length !== 6) {
+                            messages.value.push({
+                                text: "setall command requires a 6-digit hex color",
+                                type: "error",
+                            });
+                            return;
+                        }
+                        jsonPayload = { command: "setall", data: args };
+                        break;
+                    case "update":
+                        // Expect a comma-separated list of 400 hex strings.
+                        const hexColors = args.split(",").map((s) => s.trim());
+                        if (hexColors.length !== 400) {
+                            messages.value.push({
+                                text: "update command requires 400 comma-separated hex colors",
+                                type: "error",
+                            });
+                            return;
+                        }
+                        jsonPayload = { command: "update", data: hexColors };
+                        break;
+                    case "difference":
+                        // Expect pairs of values like: "difference (0), ffffff, (1), 000000"
+                        const diffParts = args.split(",").map((s) => s.trim());
+                        if (diffParts.length % 2 !== 0) {
+                            messages.value.push({
+                                text: "difference command requires pairs of values",
+                                type: "error",
+                            });
+                            return;
+                        }
+                        const diffArray = [];
+                        for (let i = 0; i < diffParts.length; i += 2) {
+                            let index = diffParts[i].replace(/[()]/g, "");
+                            let hex = diffParts[i + 1].replace(/[()]/g, "");
+                            diffArray.push([index, hex]);
+                        }
+                        jsonPayload = { command: "difference", data: diffArray };
+                        break;
+                    default:
+                        messages.value.push({
+                            text: "Unknown command",
+                            type: "error",
+                        });
+                        return;
+                }
             }
+
+            // Convert the command object to JSON and send it.
             const jsonMessage = JSON.stringify(jsonPayload);
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(jsonMessage);
-                messages.value.push({ text: "> " + jsonMessage, type: 'command' });
+                messages.value.push({ text: "> " + jsonMessage, type: "command" });
                 if (messages.value.length > MAX_MESSAGES) {
                     messages.value.shift();
                 }
@@ -122,11 +250,15 @@ createApp({
                 selectedSuggestionIndex.value = -1;
                 scrollToBottom();
             } else {
-                messages.value.push({ text: "WebSocket not connected.", type: 'error' });
+                messages.value.push({
+                    text: "WebSocket not connected.",
+                    type: "error",
+                });
                 scrollToBottom();
             }
         }
 
+        // Autocomplete/suggestion functions
         function filterSuggestions() {
             const input = currentCommand.value.toLowerCase();
             if (!input) {
@@ -134,7 +266,7 @@ createApp({
                 selectedSuggestionIndex.value = -1;
                 return;
             }
-            filteredSuggestions.value = knownCommands.filter(cmd =>
+            filteredSuggestions.value = knownCommands.filter((cmd) =>
                 cmd.toLowerCase().startsWith(input)
             );
             selectedSuggestionIndex.value = -1;
@@ -164,6 +296,7 @@ createApp({
             selectedSuggestionIndex.value = -1;
         }
 
+        // Scroll the message window to the bottom
         function scrollToBottom() {
             nextTick(() => {
                 const messagesContainer = document.querySelector(".messages");
@@ -173,6 +306,7 @@ createApp({
             });
         }
 
+        // Perform an HTTP health check using the new API's /health endpoint.
         async function checkHealth() {
             try {
                 const response = await fetch(healthUrl);
@@ -180,21 +314,23 @@ createApp({
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const data = await response.json();
-                const unreachable = Object.entries(data).filter(([ip, status]) => status !== "OK");
+                const unreachable = Object.entries(data).filter(
+                    ([ip, status]) => status !== "OK"
+                );
                 if (unreachable.length > 0) {
                     const ips = unreachable.map(([ip]) => ip).join(", ");
                     messages.value.push({
                         text: `Warning: The following devices are unreachable: ${ips}`,
-                        type: 'warning'
+                        type: "warning",
                     });
                     console.warn("Unreachable devices:", unreachable);
                 } else {
-                    messages.value.push({ text: "All devices are healthy.", type: 'info' });
+                    messages.value.push({ text: "All devices are healthy.", type: "info" });
                 }
             } catch (error) {
                 messages.value.push({
                     text: `Error fetching health status: ${error.message}`,
-                    type: 'error'
+                    type: "error",
                 });
                 console.error("Health check failed:", error);
             } finally {
@@ -205,27 +341,23 @@ createApp({
         onMounted(() => {
             messages.value.push({
                 text: "Type a command and press Enter to send it as JSON to the server.",
-                type: 'info'
+                type: "info",
             });
             messages.value.push({
                 text: "Use the up and down arrow keys to select a suggestion and press Enter to choose it.",
-                type: 'info'
+                type: "info",
             });
             messages.value.push({
                 text: "Known commands: " + knownCommands.join(", "),
-                type: 'info'
+                type: "info",
             });
-            messages.value.push({
-                text: "Connecting to WebSocket...",
-                type: 'info'
-            });
+            messages.value.push({ text: "Connecting to WebSocket...", type: "info" });
             connect();
             checkHealth();
             // Set up a periodic health check every 60 seconds
             healthCheckInterval = setInterval(checkHealth, 60000);
         });
 
-        // Clean up on unmount
         onUnmounted(() => {
             if (socket) {
                 socket.close();
