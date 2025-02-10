@@ -876,7 +876,7 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
                 await websocket.send_text("Error: Missing video name.")
                 return
             # In your legacy implementation you might need to add the extension.
-            start_video(video_name)
+            start_video(video_name + ".mp4")
 
         elif command == b"stop":
             stop_animation()
@@ -942,7 +942,7 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
         else:
             video_name = str(data_field).strip()
             stop_animation()
-            start_video(video_name)
+            start_video(video_name + ".mp4")
             await websocket.send_text(json.dumps({"status": "Video playback started"}))
 
     elif command == "stop":
