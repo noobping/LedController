@@ -10,6 +10,7 @@ createApp({
 
         // List of commands (for autocomplete/help)
         const knownCommands = [
+            "log [level]",
             "videolist",
             "video <video_name>",
             "stop",
@@ -120,6 +121,10 @@ createApp({
                 const args = parts.slice(1).join(" ");
 
                 switch (command) {
+                    case "log":
+                        let level = args ? args.toLowerCase() : "info";
+                        jsonPayload = { command: "log", level: level };
+                        break;
                     case "videolist":
                         jsonPayload = { command: "videolist" };
                         break;
