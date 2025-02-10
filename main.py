@@ -146,15 +146,78 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
 # --------------------------------------------------------------------------------
 
 
-def handle_piano(controller_idx: int, window_idx: int):
+piano_states = [[(0, 0, 0) for _ in range(WINDOWS_PER_CONTROLLER)]
+                for _ in range(TOTAL_CONTROLLERS)]
+pianoLoopThread = None
+stopPianoLoop = True
+
+
+def build_piano_colors() -> List[Tuple[int, int, int]]:
     """
-    Lights up exactly one window (20 LEDs) in white for a given controller+window.
-    All other LEDs are off (black).
+    Flattens the global piano_states into a list of LED colors
+    of length TOTAL_LEDS.
+    """
+    global piano_states
+    colors = []
+    for c_idx in range(TOTAL_CONTROLLERS):
+        for w_idx in range(WINDOWS_PER_CONTROLLER):
+            colors.extend([piano_states[c_idx][w_idx]] * LEDS_PER_WINDOW)
+    return colors
+
+
+def piano_loop():
+    """
+    Background thread function that sends the current piano state every 0.3 seconds.
+    """
+    global stopPianoLoop
+    logging.info("Piano loop started, sending frames every 0.3s.")
+
+    while not stopPianoLoop:
+        colors = build_piano_colors()
+        send_frames(colors)
+        time.sleep(0.3)
+
+    logging.info("Piano loop stopped.")
+
+
+def start_piano_loop():
+    """
+    Starts the piano loop thread if it's not already running.
+    """
+    global pianoLoopThread, stopPianoLoop
+    if pianoLoopThread and pianoLoopThread.is_alive():
+        # Already running
+        return
+
+    stopPianoLoop = False
+    pianoLoopThread = Thread(target=piano_loop, daemon=True)
+    pianoLoopThread.start()
+
+
+def stop_piano_loop():
+    """
+    Stops the piano loop thread if it's running.
+    """
+    global pianoLoopThread, stopPianoLoop
+    if pianoLoopThread and pianoLoopThread.is_alive():
+        logging.info("Stopping piano loop.")
+        stopPianoLoop = True
+        pianoLoopThread.join()
+        pianoLoopThread = None
+
+
+def handle_piano(controller_idx: int, window_idx: int, color: Tuple[int, int, int], persistent: bool):
+    """
+    Update the single window in the piano states.
 
     Args:
-        controller_idx (int): Index of the WLED controller (0-1).
-        window_idx (int): Index of the window (0-WINDOWS_PER_CONTROLLER) on the controller.
+        controller_idx (int): Index of the controller (0-3).
+        window_idx (int): Index of the window (0-4).
+        color (Tuple[int, int, int]): RGB color tuple.
+        persistent (bool): If True, keep the current colors; otherwise, reset others to off.
     """
+    global piano_states
+
     if not (0 <= controller_idx < TOTAL_CONTROLLERS):
         logging.error(f"Invalid controller index: {controller_idx}")
         return
@@ -162,21 +225,22 @@ def handle_piano(controller_idx: int, window_idx: int):
         logging.error(f"Invalid window index: {window_idx}")
         return
 
-    # Start with all LEDs off
-    colors = [(0, 0, 0)] * TOTAL_LEDS
+    if not persistent:
+        # reset all to off
+        piano_states = [[(0, 0, 0) for _ in range(WINDOWS_PER_CONTROLLER)]
+                        for _ in range(TOTAL_CONTROLLERS)]
 
-    # Calculate the slice of LEDs corresponding to this window
-    start_led = window_idx * LEDS_PER_WINDOW
-    end_led = start_led + LEDS_PER_WINDOW
+    # set the chosen window's color
+    piano_states[controller_idx][window_idx] = color
 
-    absolute_start = controller_idx * LEDS_PER_CONTROLLER + start_led
-    absolute_end = controller_idx * LEDS_PER_CONTROLLER + end_led
-
-    # Make those 20 LEDs white
-    for i in range(absolute_start, absolute_end):
-        colors[i] = (255, 255, 255)
-
+    # Immediately send this new frame
+    colors = build_piano_colors()
     send_frames(colors)
+
+    if persistent:
+        start_piano_loop()
+    else:
+        stop_piano_loop()
 
 # --------------------------------------------------------------------------------
 #                         VIDEO PLAYBACK LOGIC
@@ -303,6 +367,7 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
     Returns:
         List[Tuple[int, int, int]]: A list of (R, G, B) tuples with red and green colors.
     """
+    logging.debug(f"Creating Christmas frame that starts with {'red' if enabled else 'green'}")
     colors = []
     for i in range(TOTAL_LEDS):
         block = i // LEDS_PER_WINDOW
@@ -323,7 +388,7 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
 
 def run_christmas_animation():
     """
-    Toggles every 5 seconds between two frames (red/green swapped).
+    Toggles every 5 seconds between two frames (red/green).
     """
     global stopChristmas
     logging.info(
@@ -343,7 +408,7 @@ def run_christmas_animation():
 
 def start_christmas():
     """
-    Starts the Christmas animation in a new thread.
+    Starts the Christmas animation.
     """
     global christmas_thread, stopChristmas
     stop_animation()
@@ -485,9 +550,9 @@ def update_differences(diff_list: List[List[str]]) -> None:
 
 def stop_animation():
     """
-    Stops any ongoing animations, including video playback and Christmas animation.
+    Stops any ongoing animations, including video playback, Christmas animation, and Piano loop.
     """
-    global stopVideo, video_thread, stopChristmas, christmas_thread, stopLegacy, legacy_thread
+    global stopVideo, video_thread, stopChristmas, christmas_thread, stopLegacy, legacy_thread, stopPianoLoop, pianoLoopThread
     logging.info("Stopping all ongoing animations.")
 
     # Stop legacy sender
@@ -497,21 +562,28 @@ def stop_animation():
         legacy_thread.join(timeout=5)
         legacy_thread = None
 
-    # Stop video
+    # Stop video playback
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
         stopVideo = True
-        video_thread.join(timeout=5)
+        video_thread.join()
         video_thread = None
 
-    # Stop Christmas
+    # Stop Christmas animation
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
         stopChristmas = True
-        christmas_thread.join(timeout=5)
+        christmas_thread.join()
         christmas_thread = None
 
-    # Clear LEDs after stopping
+    # Stop the piano loop
+    if pianoLoopThread and pianoLoopThread.is_alive():
+        logging.info("Stopping piano loop.")
+        stopPianoLoop = True
+        pianoLoopThread.join()
+        pianoLoopThread = None
+
+    # Clear LEDs
     black = [(0, 0, 0)] * TOTAL_LEDS
     send_frames(black)
     logging.info("All animations have been stopped and LEDs cleared.")
@@ -631,6 +703,14 @@ def christmas_endpoint():
     """ Starts Christmas animation. """
     start_christmas()
     return {"message": "Christmas animation started."}
+
+
+@app.get("/piano")
+def get_piano_state():
+    """
+    Returns the current piano state (all windows) for all controllers.
+    """
+    return {"piano": piano_states}
 
 
 @app.post("/piano/{controller_idx}/{window_idx}")
@@ -874,7 +954,9 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
             try:
                 controller_idx = int(data_field["controller"])
                 window_idx = int(data_field["window"])
-                handle_piano(controller_idx, window_idx)
+                persistent = data_field.get("persistent", False)
+                color = data_field.get("color", (255, 255, 255))
+                handle_piano(controller_idx, window_idx, color, persistent)
                 await websocket.send_text(json.dumps({
                     "status": f"Piano window {window_idx} on controller {controller_idx} activated"
                 }))
@@ -954,7 +1036,7 @@ async def ws_json_endpoint(websocket: WebSocket):
 
 def set_brightness(value: int):
     """
-    Sets brightness on all WLED controllers via /json endpoint.
+    Sets brightness (0-255) on all WLED controllers via /json endpoint.
     """
     payload = {"state": {"on": True, "bri": value}}
     for ip in WLED_IPS:
