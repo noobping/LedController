@@ -519,7 +519,7 @@ async def health_check():
     Health check endpoint to verify if the WLED controllers are reachable.
     """
     health_status = {}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=1.0) as client:
         tasks = [client.get(f"http://{ip}/json") for ip in WLED_IPS]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         for ip, resp in zip(WLED_IPS, responses):
