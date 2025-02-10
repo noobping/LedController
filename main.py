@@ -1,7 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from threading import Thread
+from threading import Thread, Event
 from typing import List, Tuple
 import asyncio
 import concurrent.futures
@@ -46,17 +46,13 @@ class WebSocketLogHandler(logging.Handler):
         try:
             sync_log_queue.put_nowait(msg)
         except queue.Full:
-            # Handle full queue scenario if needed
             logging.warning("Log queue is full. Dropping log message.")
-            pass
 
 
 # Configure the root logger
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-# Remove existing handlers to prevent duplicate logs
-logger.handlers = []
+logger.handlers = []  # Remove existing handlers to prevent duplicate logs
 
 # Create and add console handler
 console_handler = logging.StreamHandler()
@@ -132,7 +128,7 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     Args:
         colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
     """
-    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers. Collors: {colors}")
+    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers. Colors: {colors}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
         for idx, ip in enumerate(WLED_IPS):
             start_idx = idx * LEDS_PER_CONTROLLER
@@ -142,22 +138,34 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
             executor.submit(send_packet, ip, PORT, packet)
 
 # --------------------------------------------------------------------------------
-#                         PIANO LOGIC (VIA WEBSOCKET)
+#                        THREADING EVENTS & THREAD HANDLES
 # --------------------------------------------------------------------------------
 
 
+# Instead of using global booleans to stop threads, we use Event objects.
+piano_stop_event = Event()
+video_stop_event = Event()
+christmas_stop_event = Event()
+legacy_stop_event = Event()
+
+# Thread handle globals (these can remain as globals)
+pianoLoopThread = None
+video_thread = None
+christmas_thread = None
+legacy_thread = None
+
+# --------------------------------------------------------------------------------
+#                           PIANO LOGIC (VIA WEBSOCKET)
+# --------------------------------------------------------------------------------
+
 piano_states = [[(0, 0, 0) for _ in range(WINDOWS_PER_CONTROLLER)]
                 for _ in range(TOTAL_CONTROLLERS)]
-pianoLoopThread = None
-stopPianoLoop = True
 
 
 def build_piano_colors() -> List[Tuple[int, int, int]]:
     """
-    Flattens the global piano_states into a list of LED colors
-    of length TOTAL_LEDS.
+    Flattens the global piano_states into a list of LED colors of length TOTAL_LEDS.
     """
-    global piano_states
     colors = []
     for c_idx in range(TOTAL_CONTROLLERS):
         for w_idx in range(WINDOWS_PER_CONTROLLER):
@@ -169,14 +177,11 @@ def piano_loop():
     """
     Background thread function that sends the current piano state every 0.3 seconds.
     """
-    global stopPianoLoop
     logging.info("Piano loop started, sending frames every 0.3s.")
-
-    while not stopPianoLoop:
+    while not piano_stop_event.is_set():
         colors = build_piano_colors()
         send_frames(colors)
         time.sleep(0.3)
-
     logging.info("Piano loop stopped.")
 
 
@@ -184,12 +189,10 @@ def start_piano_loop():
     """
     Starts the piano loop thread if it's not already running.
     """
-    global pianoLoopThread, stopPianoLoop
+    global pianoLoopThread
     if pianoLoopThread and pianoLoopThread.is_alive():
-        # Already running
         return
-
-    stopPianoLoop = False
+    piano_stop_event.clear()
     pianoLoopThread = Thread(target=piano_loop, daemon=True)
     pianoLoopThread.start()
 
@@ -198,15 +201,15 @@ def stop_piano_loop():
     """
     Stops the piano loop thread if it's running.
     """
-    global pianoLoopThread, stopPianoLoop
+    global pianoLoopThread
     if pianoLoopThread and pianoLoopThread.is_alive():
         logging.info("Stopping piano loop.")
-        stopPianoLoop = True
+        piano_stop_event.set()
         pianoLoopThread.join()
         pianoLoopThread = None
 
 
-def handle_piano(controller_idx: int, window_idx: int, color: Tuple[int, int, int], persistent: bool):
+def handle_piano(controller_idx: int, window_idx: int, color: Tuple[int, int, int] = (255, 255, 255), persistent: bool = False):
     """
     Update the single window in the piano states.
 
@@ -216,8 +219,6 @@ def handle_piano(controller_idx: int, window_idx: int, color: Tuple[int, int, in
         color (Tuple[int, int, int]): RGB color tuple.
         persistent (bool): If True, keep the current colors; otherwise, reset others to off.
     """
-    global piano_states
-
     if not (0 <= controller_idx < TOTAL_CONTROLLERS):
         logging.error(f"Invalid controller index: {controller_idx}")
         return
@@ -226,14 +227,15 @@ def handle_piano(controller_idx: int, window_idx: int, color: Tuple[int, int, in
         return
 
     if not persistent:
-        # reset all to off
-        piano_states = [[(0, 0, 0) for _ in range(WINDOWS_PER_CONTROLLER)]
-                        for _ in range(TOTAL_CONTROLLERS)]
+        # Reset all windows to off
+        for c in range(TOTAL_CONTROLLERS):
+            for w in range(WINDOWS_PER_CONTROLLER):
+                piano_states[c][w] = (0, 0, 0)
 
-    # set the chosen window's color
+    # Set the chosen window's color
     piano_states[controller_idx][window_idx] = color
 
-    # Immediately send this new frame
+    # Immediately send the new frame
     colors = build_piano_colors()
     send_frames(colors)
 
@@ -247,23 +249,15 @@ def handle_piano(controller_idx: int, window_idx: int, color: Tuple[int, int, in
 # --------------------------------------------------------------------------------
 
 
-stopVideo = False
-video_thread = None
-
-
 def play_video(video_path: str, max_fps: float = None):
     """
-    Loops the given video until 'stopVideo' is True.
-    Each frame is resized to 5x4 (grid_cols x grid_rows),
-    then expanded to 400 LEDs and sent to the WLED controllers.
+    Loops the given video until video_stop_event is set.
 
     Args:
         video_path (str): Path to the video file.
         max_fps (float): Maximum FPS to cap the video playback.
     """
-    global stopVideo
-
-    while not stopVideo:
+    while not video_stop_event.is_set():
         cap = cv.VideoCapture(video_path)
         if not cap.isOpened():
             logging.error(f"Failed to open video file: {video_path}")
@@ -276,22 +270,19 @@ def play_video(video_path: str, max_fps: float = None):
         frame_duration = 1.0 / fps
 
         logging.info(f"Playing video in a loop: {video_path} at {fps:.2f} FPS")
-
-        # 4 rows x 5 columns => 20 windows
         grid_rows = 4
         grid_cols = 5
 
-        while not stopVideo:
+        while not video_stop_event.is_set():
             frame_start = time.time()
             ret, frame = cap.read()
             if not ret:
-                # End of video => break to restart loop
                 break
-            if stopVideo:
-                logging.info("stopping video playback...")
+            if video_stop_event.is_set():
+                logging.info("Stopping video playback...")
                 break
 
-            # Convert to RGB if needed
+            # Convert frame to RGB if necessary
             if len(frame.shape) == 2:
                 frame = cv.cvtColor(frame, cv.COLOR_GRAY2RGB)
             elif frame.shape[2] == 4:
@@ -299,15 +290,13 @@ def play_video(video_path: str, max_fps: float = None):
             else:
                 frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
-            # Resize to 5x4
             resized_frame = cv.resize(
                 frame, (grid_cols, grid_rows), interpolation=cv.INTER_AREA)
-            # Flatten and repeat for LEDS_PER_WINDOW
             reshaped_frame = resized_frame.reshape(-1, 3)
             full_colors = np.repeat(
                 reshaped_frame, LEDS_PER_WINDOW, axis=0).tolist()
 
-            # Ensure exactly 400
+            # Ensure exactly TOTAL_LEDS colors
             if len(full_colors) < TOTAL_LEDS:
                 full_colors += [(0, 0, 0)] * (TOTAL_LEDS - len(full_colors))
             elif len(full_colors) > TOTAL_LEDS:
@@ -315,7 +304,7 @@ def play_video(video_path: str, max_fps: float = None):
 
             send_frames(full_colors)
 
-            # Honor FPS
+            # Sleep to honor the FPS
             elapsed = time.time() - frame_start
             wait_time = frame_duration - elapsed
             if wait_time > 0:
@@ -323,7 +312,7 @@ def play_video(video_path: str, max_fps: float = None):
 
         cap.release()
 
-    # Clear once stopped
+    # Clear LEDs after stopping
     black = [(0, 0, 0)] * TOTAL_LEDS
     send_frames(black)
     logging.info("Video playback stopped or finished.")
@@ -331,19 +320,16 @@ def play_video(video_path: str, max_fps: float = None):
 
 def start_video(video_name: str):
     """
-    Kills any existing video thread, starts a new one looping the given video.
+    Kills any existing video thread and starts a new one looping the given video.
 
     Args:
         video_name (str): Name of the video file (without extension).
     """
-    global video_thread, stopVideo
-
-    # If a video is already playing, stop it
+    global video_thread
     if video_thread and video_thread.is_alive():
-        stopVideo = True
+        video_stop_event.set()
         video_thread.join()
-
-    stopVideo = False
+    video_stop_event.clear()
     video_path = os.path.join(os.path.dirname(__file__), "videos", video_name)
     video_thread = Thread(target=play_video, args=(video_path,), daemon=True)
     video_thread.start()
@@ -351,10 +337,6 @@ def start_video(video_name: str):
 # --------------------------------------------------------------------------------
 #                           CHRISTMAS ANIMATION LOGIC
 # --------------------------------------------------------------------------------
-
-
-stopChristmas = False
-christmas_thread = None
 
 
 def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
@@ -372,17 +354,9 @@ def make_christmas_frame(enabled: bool = True) -> List[Tuple[int, int, int]]:
     for i in range(TOTAL_LEDS):
         block = i // LEDS_PER_WINDOW
         if enabled:
-            # Even block => Red, Odd => Green
-            if block % 2 == 0:
-                colors.append((255, 0, 0))
-            else:
-                colors.append((0, 255, 0))
+            colors.append((255, 0, 0) if block % 2 == 0 else (0, 255, 0))
         else:
-            # Even => Green, Odd => Red
-            if block % 2 == 0:
-                colors.append((0, 255, 0))
-            else:
-                colors.append((255, 0, 0))
+            colors.append((0, 255, 0) if block % 2 == 0 else (255, 0, 0))
     return colors
 
 
@@ -390,18 +364,16 @@ def run_christmas_animation():
     """
     Toggles every 5 seconds between two frames (red/green).
     """
-    global stopChristmas
     logging.info(
         "Starting Christmas animation with 0.1s sends, switching frames every 5s.")
     enabled = True
-
-    while not stopChristmas:
+    while not christmas_stop_event.is_set():
         block_start = time.monotonic()
-        while (time.monotonic() - block_start < 5) and not stopChristmas:
+        while (time.monotonic() - block_start < 5) and not christmas_stop_event.is_set():
             colors = make_christmas_frame(enabled)
             send_frames(colors)
             time.sleep(0.1)
-        if not stopChristmas:
+        if not christmas_stop_event.is_set():
             enabled = not enabled
             logging.info(f"Switched to {'Red' if enabled else 'Green'} frame.")
 
@@ -410,20 +382,18 @@ def start_christmas():
     """
     Starts the Christmas animation.
     """
-    global christmas_thread, stopChristmas
-    stop_animation()
-
-    stopChristmas = False
+    global christmas_thread
+    stop_animation()  # Stop any ongoing animations first
+    christmas_stop_event.clear()
     christmas_thread = Thread(target=run_christmas_animation, daemon=True)
     christmas_thread.start()
     logging.info("Christmas animation thread started.")
-
 
 # --------------------------------------------------------------------------------
 #                      LEGACY FUNCTIONS & GLOBALS
 # --------------------------------------------------------------------------------
 
-# Convert a 6-digit hex string (e.g. "ff8040") to (R, G, B)
+
 def hex_to_rgb(h: str) -> Tuple[int, int, int]:
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
@@ -431,42 +401,37 @@ def hex_to_rgb(h: str) -> Tuple[int, int, int]:
 # Global variable holding the current legacy frame (default black)
 current_legacy_frame: List[Tuple[int, int, int]] = [(0, 0, 0)] * TOTAL_LEDS
 
-# Globals for the legacy sender thread and its stop flag
-stopLegacy = False
-legacy_thread = None
-
 
 def run_legacy_animation():
     """
-    Continuously sends the current legacy frame every 0.25 seconds until stopLegacy is True.
+    Continuously sends the current legacy frame every 0.25 seconds until legacy_stop_event is set.
     """
-    global stopLegacy
-    while not stopLegacy:
+    while not legacy_stop_event.is_set():
         send_frames(current_legacy_frame)
-        logging.debug(f"Update legacy frame")
+        logging.debug("Update legacy frame")
         time.sleep(0.25)
 
 
 def start_legacy_sender():
     """
     Starts the legacy sender thread if it is not already running.
+    Stops video and Christmas animations if they are running.
     """
-    global video_thread, stopVideo, christmas_thread, stopChristmas
+    global video_thread, christmas_thread, legacy_thread
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
-        stopVideo = True
+        video_stop_event.set()
         video_thread.join()
         video_thread = None
 
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
-        stopChristmas = True
+        christmas_stop_event.set()
         christmas_thread.join(timeout=2)
         christmas_thread = None
 
-    global legacy_thread, stopLegacy
     if legacy_thread is None or not legacy_thread.is_alive():
-        stopLegacy = False
+        legacy_stop_event.clear()
         legacy_thread = Thread(target=run_legacy_animation, daemon=True)
         legacy_thread.start()
         logging.info("Legacy sender thread started.")
@@ -489,15 +454,12 @@ def make_setall_frame(color: str) -> List[Tuple[int, int, int]]:
 def setAllColors(color: str) -> None:
     """
     Legacy command to set all LEDs to the given color.
-    This function stops any current animations and updates the global legacy frame.
 
     Args:
         color (str): A 6-digit hex string (e.g. "ff8040").
     """
     global current_legacy_frame
-    # Create a frame where every LED is the same color.
-    frame = make_setall_frame(color)
-    current_legacy_frame = frame
+    current_legacy_frame = make_setall_frame(color)
     logging.info(f"Legacy: Set all colors to #{color}")
 
 
@@ -514,7 +476,6 @@ def update_matrix_legacy(colors: List[str]) -> None:
     if len(colors) != TOTAL_LEDS:
         raise ValueError(f"Expected {TOTAL_LEDS} colors but got {len(colors)}")
     global current_legacy_frame
-    # Convert each hex string to an RGB tuple.
     current_legacy_frame = [hex_to_rgb(c) for c in colors]
     logging.info("Legacy: Full matrix update performed.")
 
@@ -550,36 +511,37 @@ def update_differences(diff_list: List[List[str]]) -> None:
 
 def stop_animation():
     """
-    Stops any ongoing animations, including video playback, Christmas animation, and Piano loop.
+    Stops any ongoing animations, including video playback, Christmas animation,
+    legacy sender, and the piano loop.
     """
-    global stopVideo, video_thread, stopChristmas, christmas_thread, stopLegacy, legacy_thread, stopPianoLoop, pianoLoopThread
+    global video_thread, christmas_thread, legacy_thread, pianoLoopThread
     logging.info("Stopping all ongoing animations.")
 
     # Stop legacy sender
     if legacy_thread and legacy_thread.is_alive():
         logging.info("Stopping legacy sender.")
-        stopLegacy = True
+        legacy_stop_event.set()
         legacy_thread.join(timeout=5)
         legacy_thread = None
 
     # Stop video playback
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
-        stopVideo = True
+        video_stop_event.set()
         video_thread.join()
         video_thread = None
 
     # Stop Christmas animation
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
-        stopChristmas = True
+        christmas_stop_event.set()
         christmas_thread.join()
         christmas_thread = None
 
     # Stop the piano loop
     if pianoLoopThread and pianoLoopThread.is_alive():
         logging.info("Stopping piano loop.")
-        stopPianoLoop = True
+        piano_stop_event.set()
         pianoLoopThread.join()
         pianoLoopThread = None
 
@@ -614,9 +576,7 @@ async def lifespan(app: FastAPI):
     logging.info("Application startup: Initializing background tasks.")
     asyncio.create_task(transfer_sync_to_async())
     asyncio.create_task(broadcast_logs())
-
     yield  # hand over to the application
-
     logging.info("Application shutdown: Cleaning up background tasks.")
     stop_animation()
 
@@ -646,7 +606,6 @@ def root():
     file_path = os.path.join("static", "index.html")
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="index.html not found")
-
     return FileResponse(file_path)
 
 
@@ -700,7 +659,7 @@ async def about():
 
 @app.post("/christmas")
 def christmas_endpoint():
-    """ Starts Christmas animation. """
+    """Starts Christmas animation."""
     start_christmas()
     return {"message": "Christmas animation started."}
 
@@ -717,7 +676,7 @@ def get_piano_state():
 def piano_endpoint(controller_idx: int, window_idx: int):
     """
     Lights up exactly one window (20 LEDs) in white for a given controller+window.
-    All other LEDs are off (black).
+    All other LEDs are off.
 
     Args:
         controller_idx (int): Index of the WLED controller (0-1).
@@ -725,13 +684,9 @@ def piano_endpoint(controller_idx: int, window_idx: int):
     """
     if not (0 <= controller_idx < TOTAL_CONTROLLERS):
         raise HTTPException(
-            status_code=400, detail="Invalid controller index."
-        )
+            status_code=400, detail="Invalid controller index.")
     if not (0 <= window_idx < WINDOWS_PER_CONTROLLER):
-        raise HTTPException(
-            status_code=400, detail="Invalid window index."
-        )
-
+        raise HTTPException(status_code=400, detail="Invalid window index.")
     handle_piano(controller_idx, window_idx)
     return {"message": f"Piano window {window_idx} on controller {controller_idx} activated."}
 
@@ -756,7 +711,6 @@ def start_video_endpoint(video_name: str):
     """
     if not video_name:
         raise HTTPException(status_code=400, detail="Missing video name.")
-
     stop_animation()
     start_video(video_name + ".mp4")
     return {"message": "Video playback started."}
@@ -803,7 +757,8 @@ async def get_brightness():
                 brightness_levels[ip] = f"Error: {resp}"
             elif resp.status_code == 200:
                 data = resp.json()
-                brightness_levels[ip] = data.get("state", {}).get("bri", "Unknown")
+                brightness_levels[ip] = data.get(
+                    "state", {}).get("bri", "Unknown")
             else:
                 brightness_levels[ip] = "Error fetching brightness"
     return {"brightness": brightness_levels}
@@ -816,10 +771,8 @@ async def get_brightness():
 async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
     """
     Process legacy API commands sent as bytes.
-    Expected format (example): b"update; <data>" or b"setall; <data>"
     """
     try:
-        # Split the incoming data on the first occurrence of b"; "
         parts = data.split(b"; ", 1)
         if len(parts) != 2:
             await websocket.send_text("Error: Invalid command format (missing separator).")
@@ -829,7 +782,6 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
         payload = parts[1].strip()
 
         if command == b"setall":
-            # Expect payload: a 6-character hex string (e.g. "ff8040")
             color_str = payload.decode()
             if len(color_str) != 6:
                 await websocket.send_text("Error: Color must be a 6-digit hex string.")
@@ -838,21 +790,15 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
             start_legacy_sender()
 
         elif command == b"update":
-            # Expect payload: a comma‐separated list of hex strings
             colors = payload.split(b", ")
             if len(colors) != TOTAL_LEDS:
                 await websocket.send_text(f"Error: Expected {TOTAL_LEDS} colors but got {len(colors)}.")
                 return
-            # Convert each byte string to a regular string (hex color)
             color_list = [c.decode() for c in colors]
             update_matrix_legacy(color_list)
             start_legacy_sender()
 
         elif command == b"difference":
-            # Expect payload: comma–separated pairs; for example:
-            # b"(23, ff8040), (45, 00ff00), ..."
-            # For simplicity, we assume that the payload is formatted as:
-            # b"23, ff8040, 45, 00ff00" (i.e. pairs separated by comma and space)
             parts = payload.split(b", ")
             if len(parts) % 2 != 0:
                 await websocket.send_text("Error: Difference command data malformed (odd number of items).")
@@ -875,7 +821,6 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
             if not video_name:
                 await websocket.send_text("Error: Missing video name.")
                 return
-            # In your legacy implementation you might need to add the extension.
             start_video(video_name + ".mp4")
 
         elif command == b"stop":
@@ -894,7 +839,6 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
             await websocket.send_text("Unknown legacy command.")
             return
 
-        # Acknowledge command processing.
         await websocket.send_text("OK.")
 
     except Exception as e:
@@ -909,7 +853,6 @@ async def ws_legacy_api(websocket: WebSocket, data: bytes) -> None:
 async def ws_json_api(websocket: WebSocket, data: str) -> None:
     """
     Process JSON API commands sent as text.
-    Expected JSON format: {"command": "setall", "data": ...}
     """
     try:
         msg = json.loads(data)
@@ -921,13 +864,12 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
     data_field = msg.get("data")
 
     if command == "log":
-        log_level = "info" if data_field is None or str(data_field).strip() == "" else str(data_field).strip()
+        log_level = "info" if data_field is None or str(
+            data_field).strip() == "" else str(data_field).strip()
         new_level_int = getattr(logging, log_level.upper(), None)
-
         if not isinstance(new_level_int, int):
             await websocket.send_text(json.dumps({"error": "Invalid log level provided"}))
             return
-        # Set the new log level
         logger.setLevel(new_level_int)
         await websocket.send_text(json.dumps({"status": f"Log level changed to {log_level.upper()}"}))
         return
@@ -998,17 +940,12 @@ async def ws_json_api(websocket: WebSocket, data: str) -> None:
 @app.websocket("/ws")
 async def ws_main(websocket: WebSocket):
     """
-    The unified WebSocket endpoint that accepts both legacy byte messages and
-    JSON messages.
-
-    If a received message contains bytes then it is dispatched to the legacy API handler.
-    If a text message is received, it is assumed to be JSON and is dispatched accordingly.
+    The unified WebSocket endpoint that accepts both legacy byte messages and JSON messages.
     """
     await websocket.accept()
     try:
         while True:
             message = await websocket.receive()
-            # Check if we got a bytes message (legacy) or text (JSON)
             if "bytes" in message and message["bytes"] is not None:
                 await ws_legacy_api(websocket, message["bytes"])
             elif "text" in message and message["text"] is not None:
@@ -1070,8 +1007,7 @@ def set_brightness(value: int):
 
 async def transfer_sync_to_async():
     """
-    Asynchronous task: move log messages from sync_log_queue => log_queue
-    once the event loop is running.
+    Asynchronous task: move log messages from sync_log_queue to log_queue.
     """
     while True:
         try:
