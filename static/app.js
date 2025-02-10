@@ -15,7 +15,7 @@ createApp({
             "video <video_name>",
             "stop",
             "brightness <0-255>",
-            "piano <controller,window[,persistent, r, g, b]>",
+            "piano <controller,window> [persistent] [r, g, b]",
             "christmas",
             "setall <6-digit hex>",
             "update <400 comma-separated hex colors>",
@@ -153,33 +153,60 @@ createApp({
                         jsonPayload = { command: "brightness", data: brightnessValue };
                         break;
                     case "piano":
-                        // Expect input like: "piano 0,0" or "piano 0,0,true,255,255,255"
-                        const pianoParts = args.split(",");
-                        if (pianoParts.length < 2) {
+                        const tokens = args.trim().split(/\s+/);
+                        if (tokens.length < 1) {
                             messages.value.push({
-                                text:
-                                    "Error: piano command requires at least a controller and window index",
+                                text: "Error: piano command requires at least a controller and window index",
                                 type: "error",
                             });
                             return;
                         }
-                        const controller = parseInt(pianoParts[0].trim(), 10);
-                        const windowIdx = parseInt(pianoParts[1].trim(), 10);
+
+                        let controller, windowIdx;
+                        if (tokens[0].includes(",")) {
+                            const cw = tokens[0].split(",");
+                            if (cw.length < 2) {
+                                messages.value.push({
+                                    text: "Error: piano command requires a controller and window index",
+                                    type: "error",
+                                });
+                                return;
+                            }
+                            controller = parseInt(cw[0].trim(), 10);
+                            windowIdx = parseInt(cw[1].trim(), 10);
+                            tokens.shift(); // Remove the first token so that the remaining tokens can be processed.
+                        } else {
+                            if (tokens.length < 2) {
+                                messages.value.push({
+                                    text: "Error: piano command requires a controller and window index",
+                                    type: "error",
+                                });
+                                return;
+                            }
+                            controller = parseInt(tokens[0].trim(), 10);
+                            windowIdx = parseInt(tokens[1].trim(), 10);
+                            tokens.splice(0, 2);
+                        }
+
                         let persistent = false;
-                        let color = [255, 255, 255]; // default white
-                        if (pianoParts.length >= 3) {
-                            // Third argument: persistent flag (true/false)
-                            persistent =
-                                pianoParts[2].trim().toLowerCase() === "true" ? true : false;
-                        }
-                        if (pianoParts.length >= 6) {
-                            // Optional R, G, B values
-                            color = [
-                                parseInt(pianoParts[3].trim(), 10),
-                                parseInt(pianoParts[4].trim(), 10),
-                                parseInt(pianoParts[5].trim(), 10),
-                            ];
-                        }
+                        let color = [255, 255, 255];
+                        tokens.forEach((token) => {
+                            token = token.trim();
+                            if (token.toLowerCase() === "persistent") {
+                                persistent = true;
+                            } else if (token.includes(",")) {
+                                const colorParts = token.split(",");
+                                if (colorParts.length !== 3) {
+                                    messages.value.push({
+                                        text: "Error: color must be in the format R,G,B",
+                                        type: "error",
+                                    });
+                                    return;
+                                }
+                                color = colorParts.map((p) => parseInt(p.trim(), 10));
+                            }
+                        });
+
                         jsonPayload = {
                             command: "piano",
                             data: {
