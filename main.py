@@ -231,7 +231,7 @@ def start_video(video_name: str):
     # If a video is already playing, stop it
     if video_thread and video_thread.is_alive():
         stopVideo = True
-        video_thread.join()
+        video_thread.join(timeout=5)
 
     stopVideo = False
     video_path = os.path.join(os.path.dirname(__file__), "videos", video_name)
@@ -344,13 +344,13 @@ def start_legacy_sender():
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
         stopVideo = True
-        video_thread.join()
+        video_thread.join(timeout=5)
         video_thread = None
 
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
         stopChristmas = True
-        christmas_thread.join()
+        christmas_thread.join(timeout=5)
         christmas_thread = None
 
     global legacy_thread, stopLegacy
@@ -448,21 +448,21 @@ def stop_animation():
     if legacy_thread and legacy_thread.is_alive():
         logging.info("Stopping legacy sender.")
         stopLegacy = True
-        legacy_thread.join()
+        legacy_thread.join(timeout=5)
         legacy_thread = None
 
     # Stop video
     if video_thread and video_thread.is_alive():
         logging.info("Stopping video playback.")
         stopVideo = True
-        video_thread.join()
+        video_thread.join(timeout=5)
         video_thread = None
 
     # Stop Christmas
     if christmas_thread and christmas_thread.is_alive():
         logging.info("Stopping Christmas animation.")
         stopChristmas = True
-        christmas_thread.join()
+        christmas_thread.join(timeout=5)
         christmas_thread = None
 
     # Clear LEDs after stopping
