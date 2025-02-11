@@ -1,4 +1,4 @@
-const { createApp, ref, onMounted, nextTick, onUnmounted } = Vue;
+const { createApp, ref, onMounted, onUpdated, nextTick, onUnmounted } = Vue;
 
 createApp({
     setup() {
@@ -338,6 +338,8 @@ createApp({
                 }
             });
         }
+
+        onUpdated(() => nextTick(() => scrollToBottom()));
 
         // Perform an HTTP health check using the new API's /health endpoint.
         async function checkHealth() {
