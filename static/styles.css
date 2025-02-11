@@ -118,7 +118,6 @@ button:hover {
     right: 0;
     border: 1px solid var(--border-color);
     list-style: none;
-    max-height: 150px;
     max-width: fit-content;
     overflow-y: auto;
     background-color: var(--suggestion-bg);

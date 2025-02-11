@@ -22,6 +22,7 @@ createApp({
             "difference <(index), hex, (index), hex, ...>",
         ];
 
+        const videoList = ref([]);
         const filteredSuggestions = ref([]);
         const selectedSuggestionIndex = ref(-1);
         const MAX_MESSAGES = 100;
@@ -53,7 +54,10 @@ createApp({
 
                 try {
                     incoming = JSON.parse(event.data);
-                    // If the payload has an "error" or "status" field, use that.
+                    if (incoming.videos && Array.isArray(incoming.videos)) {
+                        videoList.value = incoming.videos;
+                    }
+
                     if (incoming.error !== undefined) {
                         messageType = "error";
                     } else if (incoming.status !== undefined) {
@@ -69,7 +73,6 @@ createApp({
                         type: messageType,
                     });
                 } catch (e) {
-                    // If the message isn’t valid JSON, just show the raw text.
                     const dataLower = event.data.toLowerCase();
                     if (dataLower.includes("debug")) {
                         messageType = "debug";
@@ -291,7 +294,6 @@ createApp({
             }
         }
 
-        // Autocomplete/suggestion functions
         function filterSuggestions() {
             const input = currentCommand.value.toLowerCase();
             if (!input) {
@@ -299,9 +301,21 @@ createApp({
                 selectedSuggestionIndex.value = -1;
                 return;
             }
-            filteredSuggestions.value = knownCommands.filter((cmd) =>
+
+            // Static suggestions from knownCommands.
+            const staticSuggestions = knownCommands.filter(cmd =>
                 cmd.toLowerCase().startsWith(input)
             );
+
+            // Dynamic video suggestions: prefix each video name with "video ".
+            const dynamicSuggestions = videoList.value
+                .map(video => `video ${video}`)
+                .filter(suggestion => suggestion.toLowerCase().startsWith(input));
+
+            // Merge both arrays.
+            // Optionally, you can remove duplicates by using a Set if needed.
+            filteredSuggestions.value = staticSuggestions.concat(dynamicSuggestions);
+
             selectedSuggestionIndex.value = -1;
         }
 
