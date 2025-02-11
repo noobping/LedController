@@ -33,7 +33,7 @@
       <div class="input-container">
         <input type="text" autofocus autocomplete="off" v-model="currentCommand"
           @keydown.down.prevent="selectNextSuggestion" @keydown.up.prevent="selectPrevSuggestion"
-          @keydown.enter.prevent="sendCommand" @input="filterSuggestions"
+          @keydown.enter.prevent="sendCommand" @input="filterSuggestions" @focus="togglePianoDisplay"
           placeholder="Type a command (e.g., 'update; <data>')" aria-label="Command input" />
         <button @click="sendCommand" aria-label="Send command">Send</button>
       </div>

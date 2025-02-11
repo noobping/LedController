@@ -208,6 +208,7 @@ button,
 }
 
 .title {
+    display: block;
     color: var(--border-color);
     text-align: center;
     font-size: 0.5em;

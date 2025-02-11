@@ -419,6 +419,24 @@ createApp({
         function hideSuggestions() {
             filteredSuggestions.value = [];
             selectedSuggestionIndex.value = -1;
+            togglePianoDisplay(false);
+        }
+
+        function togglePianoDisplay(visible = true) {
+            const piano = document.querySelector('.piano');
+            const titles = document.querySelectorAll('.title');
+
+            if (visible) {
+                piano.style.display = 'flex';
+                titles.forEach(title => {
+                    title.style.display = 'block';
+                });
+            } else {
+                piano.style.display = 'none';
+                titles.forEach(title => {
+                    title.style.display = 'none';
+                });
+            }
         }
 
         function pianoKey(controller, window) {
@@ -439,6 +457,7 @@ createApp({
             selectPrevSuggestion,
             chooseSuggestion,
             hideSuggestions,
+            togglePianoDisplay,
             pianoKey,
         };
     },
