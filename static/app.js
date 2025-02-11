@@ -421,9 +421,9 @@ createApp({
             selectedSuggestionIndex.value = -1;
         }
 
-        function pianoKey(x, y) {
+        function pianoKey(controller, window) {
             const isPersistent = currentCommand.value.includes("persistent");
-            currentCommand.value = `piano ${x},${y} ${isPersistent ? "persistent" : ""}`.trim();
+            currentCommand.value = `piano ${controller},${window} ${isPersistent ? "persistent" : ""}`.trim();
             sendCommand();
         }
 
