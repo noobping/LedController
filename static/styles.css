@@ -175,19 +175,16 @@ button,
     z-index: 1000;
     border-radius: 1em;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    left: 50%;
+    bottom: 80px;
+    transform: translateX(-50%);
 }
 
 @media screen and (min-width: 450px) {
     .suggestions {
         bottom: 50px;
         left: 1em;
-    }
-}
-
-@media screen and (max-height: 450px) {
-    .suggestions {
-        left: 50%;
-        transform: translateX(-50%);
+        transform: none;
     }
 }
 
@@ -209,6 +206,7 @@ button,
     padding: 0;
     margin: 0;
 }
+
 @media screen and (min-width: 450px) {
     .title {
         font-size: 0.8em;
