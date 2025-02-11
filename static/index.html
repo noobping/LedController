@@ -34,13 +34,12 @@
         </li>
       </ul>
 
-      <div class="input-container">
+      <div class="piano">
         <div v-for="y in 4" :key="y" :class="`controller controller${y - 1}`">
           <div v-for="x in 5" :key="x" :class="`window window${x - 1}`">
             <button @click="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>
           </div>
         </div>
-
       </div>
     </div>
   </div>
