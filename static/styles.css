@@ -83,31 +83,53 @@ body {
     display: flex;
 }
 
-button,
-input {
+.input-container button,
+.input-container input {
     padding: 0.8em;
     margin: 0.5em;
     font-size: 1em;
+    border-radius: 1em;
 }
 
-input[type="text"] {
+button,
+.input-container button,
+.input-container input {
+    font-size: 1em;
+}
+
+.input-container input[type="text"] {
     flex: 1;
     border: 1px solid var(--border-color);
-    border-radius: 1em;
     background-color: var(--input-bg);
     color: var(--text-color);
 }
 
 button {
-    margin-left: 10px;
-    border: none;
-    background-color: var(--button-bg);
-    color: white;
-    border-radius: 1em;
     cursor: pointer;
 }
 
-button:hover {
+.window button {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 0.5em;
+    margin: 0.5em 0.1em;
+    border-radius: 0.5em;
+}
+
+.window button:hover {
+    background-color: var(--suggestion-hover-bg);
+    border: 1px solid var(--border-color);
+}
+
+.input-container button {
+    background-color: var(--button-bg);
+    border: none;
+    color: white;
+    margin-left: 2em;
+}
+
+.input-container button:hover {
     background-color: var(--button-hover-bg);
 }
 
@@ -145,14 +167,12 @@ button:hover {
     position: relative;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 0.5em;
     margin: auto;
+    padding: 0;
 }
 
 .controller {
-    border: 1px solid var(--border-color);
     background-color: var(--background-color);
-    border-radius: 1em;
 }
 
 .controller3 {
