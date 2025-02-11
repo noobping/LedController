@@ -128,7 +128,7 @@ def send_frames(colors: List[Tuple[int, int, int]]) -> None:
     Args:
         colors (List[Tuple[int, int, int]]): List of (R, G, B) tuples for all LEDs.
     """
-    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers. Colors: {colors}")
+    logging.debug(f"Sending {len(colors)} colors to {TOTAL_CONTROLLERS} controllers.")
     with concurrent.futures.ThreadPoolExecutor(max_workers=TOTAL_CONTROLLERS) as executor:
         for idx, ip in enumerate(WLED_IPS):
             start_idx = idx * LEDS_PER_CONTROLLER
