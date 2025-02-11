@@ -248,19 +248,19 @@ button,
 }
 
 .controller0 {
-    order: 1;
-}
-
-.controller1 {
     order: 2;
 }
 
+.controller1 {
+    order: 1;
+}
+
 .controller2 {
-    order: 3;
+    order: 4;
 }
 
 .controller3 {
-    order: 4;
+    order: 3;
 }
 
 /* Message Types */
