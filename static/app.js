@@ -425,6 +425,7 @@ createApp({
             const isPersistent = currentCommand.value.includes("persistent");
             currentCommand.value = `piano ${controller},${window} ${isPersistent ? "persistent" : ""}`.trim();
             sendCommand();
+            if (isPersistent) currentCommand.value = "piano persistent";
         }
 
         return {
