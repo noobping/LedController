@@ -166,6 +166,11 @@ button,
     background-color: var(--background-color);
 }
 
+.piano>.controller {
+    flex: 0 0 50%;
+    max-width: 50%;
+}
+
 .controller1 {
     order: 3;
 }
