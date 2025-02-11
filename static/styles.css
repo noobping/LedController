@@ -150,6 +150,7 @@ button,
     background-color: var(--button-hover-bg);
 }
 
+.clearBtn,
 .window button {
     background-color: var(--background-color);
     color: var(--text-color);
@@ -159,8 +160,25 @@ button,
     border-radius: 0.5em;
 }
 
+.clearBtn:hover,
 .window button:hover {
     background-color: var(--suggestion-hover-bg);
+}
+
+.clearBtn {
+    display: none;
+}
+
+@media screen and (min-width: 300px) and (max-width: 450px),
+screen and (min-width: 780px) {
+    .clearBtn {
+        position: absolute;
+        left: 0.5em;
+        z-index: 1;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
 }
 
 .suggestions {

@@ -22,6 +22,8 @@
     <div class="command-prompt">
       <p class="title">Piano</p>
       <div class="piano" @click="hideSuggestions">
+        <button @click.stop="clearLeds" class="clearBtn" aria-label="Clear all LEDs">Clear</button>
+
         <div v-for="y in 4" :key="y" :class="`controller controller${y - 1}`">
           <div v-for="x in 5" :key="x" :class="`window window${x - 1}`">
             <button @click.stop="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>

@@ -446,6 +446,11 @@ createApp({
             if (isPersistent) currentCommand.value = "piano persistent";
         }
 
+        function clearLeds() {
+            currentCommand.value = "stop"
+            sendCommand();
+        }
+
         return {
             currentCommand,
             messages,
@@ -459,6 +464,7 @@ createApp({
             hideSuggestions,
             togglePianoDisplay,
             pianoKey,
+            clearLeds,
         };
     },
 }).mount("#app");
