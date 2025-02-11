@@ -35,9 +35,9 @@
       </ul>
 
       <div class="input-container">
-        <div v-for="y in 5" :key="y" class="row">
-          <div v-for="x in 4" :key="x" class="cell">
-            <button @click="pianoKey(x - 1, y - 1)" :aria-label="`Piano key ${x - 1}.${y - 1}`">{{ x - 1 }}.{{ y - 1 }}</button>
+        <div v-for="y in 4" :key="y" :class="`controller controller${y - 1}`">
+          <div v-for="x in 5" :key="x" :class="`window window${x - 1}`">
+            <button @click="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>
           </div>
         </div>
 
