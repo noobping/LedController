@@ -16,6 +16,14 @@ For example:
 python ./video.py --video ./video/windows_21_dec.mp4 --loop
 ```
 
+## Piano
+
+Run the following command to start the piano light show:
+
+```bash
+python ./piano.py
+```
+
 ## Web API
 
 Start the web API:
