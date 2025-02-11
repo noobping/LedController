@@ -83,8 +83,11 @@ body {
     display: flex;
 }
 
-.input-container button,
-.input-container input {
+.input-container input[type="text"] {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--text-color);
     padding: 0.8em;
     margin: 0.5em;
     font-size: 1em;
@@ -92,20 +95,23 @@ body {
 }
 
 button,
-.input-container button,
-.input-container input {
-    font-size: 1em;
-}
-
-.input-container input[type="text"] {
-    flex: 1;
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--text-color);
-}
-
-button {
+.input-container button {
     cursor: pointer;
+    font-size: 1em;
+    padding: 0.8em;
+    margin: 0.5em;
+    border-radius: 1em;
+}
+
+.input-container button {
+    background-color: var(--button-bg);
+    border: none;
+    color: white;
+    margin-left: 2em;
+}
+
+.input-container button:hover {
+    background-color: var(--button-hover-bg);
 }
 
 .window button {
@@ -119,18 +125,6 @@ button {
 
 .window button:hover {
     background-color: var(--suggestion-hover-bg);
-    border: 1px solid var(--border-color);
-}
-
-.input-container button {
-    background-color: var(--button-bg);
-    border: none;
-    color: white;
-    margin-left: 2em;
-}
-
-.input-container button:hover {
-    background-color: var(--button-hover-bg);
 }
 
 .suggestions {
@@ -169,18 +163,7 @@ button {
     justify-content: center;
     margin: auto;
     padding: 0;
-}
-
-.controller {
     background-color: var(--background-color);
-}
-
-.controller3 {
-    order: 1;
-}
-
-.controller4 {
-    order: 2;
 }
 
 .controller1 {
@@ -189,6 +172,14 @@ button {
 
 .controller2 {
     order: 4;
+}
+
+.controller3 {
+    order: 1;
+}
+
+.controller4 {
+    order: 2;
 }
 
 /* Message Types */
