@@ -173,11 +173,18 @@ button,
     overflow-y: auto;
     background-color: var(--suggestion-bg);
     z-index: 1000;
-    border-radius: 1em;
+    border-radius: 0.5em;
+    font-size: 0.8em;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     left: 50%;
     bottom: 80px;
     transform: translateX(-50%);
+}
+
+.suggestions li {
+    cursor: pointer;
+    color: var(--text-color);
+    padding: 0.5em;
 }
 
 @media screen and (min-width: 450px) {
@@ -185,13 +192,13 @@ button,
         bottom: 50px;
         left: 1em;
         transform: none;
+        border-radius: 1em;
+        font-size: 1em;
     }
-}
 
-.suggestions li {
-    padding: 1em;
-    cursor: pointer;
-    color: var(--text-color);
+    .suggestions li {
+        padding: 1em;
+    }
 }
 
 .suggestions li.selected,
