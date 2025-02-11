@@ -131,8 +131,6 @@ button,
     margin: 0;
     padding: 0;
     position: absolute;
-    bottom: 50px;
-    left: 1em;
     right: 0;
     border: 1px solid var(--border-color);
     list-style: none;
@@ -142,6 +140,20 @@ button,
     z-index: 1000;
     border-radius: 1em;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+@media screen and (min-width: 450px) {
+    .suggestions {
+        bottom: 50px;
+        left: 1em;
+    }
+}
+
+@media screen and (max-height: 450px) {
+    .suggestions {
+        left: 50%;
+        transform: translateX(-50%);
+    }
 }
 
 .suggestions li {
@@ -171,7 +183,7 @@ button,
     max-width: 100%;
 }
 
-@media (min-width: 450px) {
+@media screen and (min-width: 450px) {
     .piano>.controller {
         flex: 0 0 50%;
         max-width: 50%;
