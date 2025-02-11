@@ -33,6 +33,15 @@
           {{ suggestion }}
         </li>
       </ul>
+
+      <div class="input-container">
+        <div v-for="y in 5" :key="y" class="row">
+          <div v-for="x in 4" :key="x" class="cell">
+            <button @click="pianoKey(x - 1, y - 1)" :aria-label="`Piano key ${x - 1}.${y - 1}`">{{ x - 1 }}.{{ y - 1 }}</button>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
   <script src="/static/app.js"></script>
