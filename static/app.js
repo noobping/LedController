@@ -421,6 +421,11 @@ createApp({
             selectedSuggestionIndex.value = -1;
         }
 
+        function pianoKey(x, y) {
+            currentCommand.value = `piano ${x},${y}`;
+            sendCommand();
+        }
+
         return {
             currentCommand,
             messages,
@@ -432,6 +437,7 @@ createApp({
             selectPrevSuggestion,
             chooseSuggestion,
             hideSuggestions,
+            pianoKey,
         };
     },
 }).mount("#app");
