@@ -119,6 +119,7 @@ button:hover {
     padding: 0;
     list-style: none;
     max-height: 150px;
+    max-width: 350px;
     overflow-y: auto;
     background-color: var(--suggestion-bg);
     z-index: 1000;
