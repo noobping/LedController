@@ -24,7 +24,7 @@
       <div class="piano" @click="hideSuggestions">
         <div v-for="y in 4" :key="y" :class="`controller controller${y - 1}`">
           <div v-for="x in 5" :key="x" :class="`window window${x - 1}`">
-            <button @click="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>
+            <button @click.stop="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>
           </div>
         </div>
       </div>
@@ -35,7 +35,7 @@
           @keydown.down.prevent="selectNextSuggestion" @keydown.up.prevent="selectPrevSuggestion"
           @keydown.enter.prevent="sendCommand" @input="filterSuggestions" @focus="togglePianoDisplay"
           placeholder="Type a command (e.g., 'update; <data>')" aria-label="Command input" />
-        <button @click="sendCommand" aria-label="Send command">Send</button>
+        <button @click.stop="sendCommand" aria-label="Send command">Send</button>
       </div>
 
       <ul v-if="filteredSuggestions.length > 0" class="suggestions" role="listbox">
