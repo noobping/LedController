@@ -422,7 +422,8 @@ createApp({
         }
 
         function pianoKey(x, y) {
-            currentCommand.value = `piano ${x},${y}`;
+            const isPersistent = currentCommand.value.includes("persistent");
+            currentCommand.value = `piano ${x},${y} ${isPersistent ? "persistent" : ""}`.trim();
             sendCommand();
         }
 
