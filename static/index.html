@@ -9,7 +9,7 @@
 </head>
 <body>
   <div id="app">
-    <div class="output">
+    <div class="output" @click="hideSuggestions">
       <div class="messages">
         <div
           v-for="(msg, idx) in messages"

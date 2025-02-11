@@ -402,6 +402,11 @@ createApp({
             }
         });
 
+        function hideSuggestions() {
+            filteredSuggestions.value = [];
+            selectedSuggestionIndex.value = -1;
+        }
+
         return {
             currentCommand,
             messages,
@@ -412,6 +417,7 @@ createApp({
             selectNextSuggestion,
             selectPrevSuggestion,
             chooseSuggestion,
+            hideSuggestions,
         };
     },
 }).mount("#app");
