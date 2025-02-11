@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,48 +8,28 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
+
 <body>
   <div id="app">
     <div class="output" @click="hideSuggestions">
       <div class="messages">
-        <div
-          v-for="(msg, idx) in messages"
-          :key="idx"
-          :class="msg.type"
-        >
+        <div v-for="(msg, idx) in messages" :key="idx" :class="msg.type">
           {{ msg.text }}
         </div>
       </div>
     </div>
     <div class="command-prompt">
       <div class="input-container">
-        <input
-          type="text"
-          autofocus
-          autocomplete="off"
-          v-model="currentCommand"
-          @keydown.down.prevent="selectNextSuggestion"
-          @keydown.up.prevent="selectPrevSuggestion"
-          @keydown.enter.prevent="sendCommand"
-          @input="filterSuggestions"
-          placeholder="Type a command (e.g., 'update; <data>')"
-          aria-label="Command input"
-        />
+        <input type="text" autofocus autocomplete="off" v-model="currentCommand"
+          @keydown.down.prevent="selectNextSuggestion" @keydown.up.prevent="selectPrevSuggestion"
+          @keydown.enter.prevent="sendCommand" @input="filterSuggestions"
+          placeholder="Type a command (e.g., 'update; <data>')" aria-label="Command input" />
         <button @click="sendCommand" aria-label="Send command">Send</button>
       </div>
-      <ul
-        v-if="filteredSuggestions.length > 0"
-        class="suggestions"
-        role="listbox"
-      >
-        <li
-          v-for="(suggestion, index) in filteredSuggestions"
-          :key="index"
-          :class="{ selected: index === selectedSuggestionIndex }"
-          @click="chooseSuggestion(index)"
-          role="option"
-          :aria-selected="index === selectedSuggestionIndex"
-        >
+      <ul v-if="filteredSuggestions.length > 0" class="suggestions" role="listbox">
+        <li v-for="(suggestion, index) in filteredSuggestions" :key="index"
+          :class="{ selected: index === selectedSuggestionIndex }" @click="chooseSuggestion(index)" role="option"
+          :aria-selected="index === selectedSuggestionIndex">
           {{ suggestion }}
         </li>
       </ul>
@@ -56,4 +37,5 @@
   </div>
   <script src="/static/app.js"></script>
 </body>
+
 </html>
