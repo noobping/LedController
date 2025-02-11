@@ -18,7 +18,18 @@
         </div>
       </div>
     </div>
+
     <div class="command-prompt">
+      <p class="title">Piano</p>
+      <div class="piano">
+        <div v-for="y in 4" :key="y" :class="`controller controller${y - 1}`">
+          <div v-for="x in 5" :key="x" :class="`window window${x - 1}`">
+            <button @click="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="title">Websocket command prompt - v2</p>
       <div class="input-container">
         <input type="text" autofocus autocomplete="off" v-model="currentCommand"
           @keydown.down.prevent="selectNextSuggestion" @keydown.up.prevent="selectPrevSuggestion"
@@ -26,6 +37,7 @@
           placeholder="Type a command (e.g., 'update; <data>')" aria-label="Command input" />
         <button @click="sendCommand" aria-label="Send command">Send</button>
       </div>
+
       <ul v-if="filteredSuggestions.length > 0" class="suggestions" role="listbox">
         <li v-for="(suggestion, index) in filteredSuggestions" :key="index"
           :class="{ selected: index === selectedSuggestionIndex }" @click="chooseSuggestion(index)" role="option"
@@ -34,13 +46,6 @@
         </li>
       </ul>
 
-      <div class="piano">
-        <div v-for="y in 4" :key="y" :class="`controller controller${y - 1}`">
-          <div v-for="x in 5" :key="x" :class="`window window${x - 1}`">
-            <button @click="pianoKey(y - 1, x - 1)" :aria-label="`Piano key ${y - 1}.${x - 1}`">{{ y - 1 }}.{{ x - 1 }}</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
   <script src="/static/app.js"></script>
