@@ -1,6 +1,6 @@
 # LedController
 
-The docker-based LedController for LS HQ.
+The docker-based LedController.
 
 ## Video player
 
@@ -49,3 +49,4 @@ Endpoints:
 | DELETE | /video/{video_name} | Stops any ongoing video playback. |
 | GET | /brightness | Returns the current brightness value. |
 | POST | /brightness/{value} | Sets brightness (0-255) on all WLED controllers. |
+
